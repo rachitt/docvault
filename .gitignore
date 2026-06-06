@@ -4,6 +4,11 @@ release/
 out/
 dist-app/
 packages/desktop/build/icon.iconset/
+# Stray vault data — the default vault lives outside the repo (~/DocVault)
+/.docvault/
+/docs/
+/assets/
+/templates/
 *.tsbuildinfo
 .DS_Store
 .env

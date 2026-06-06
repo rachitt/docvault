@@ -9,7 +9,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function resolveVaultDir(): string {
   if (process.env.DOCVAULT_DIR) return path.resolve(process.env.DOCVAULT_DIR);
-  return path.join(os.homedir(), 'Documents', 'DocVault');
+  // Home root, NOT ~/Documents/DocVault — that collides with the repo on
+  // case-insensitive macOS filesystems (Documents/docvault == Documents/DocVault).
+  return path.join(os.homedir(), 'DocVault');
 }
 
 async function createWindow(): Promise<void> {

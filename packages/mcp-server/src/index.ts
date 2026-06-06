@@ -12,7 +12,9 @@ function resolveVaultDir(): string {
   const flag = argv.indexOf('--vault');
   if (flag !== -1 && argv[flag + 1]) return path.resolve(argv[flag + 1]!);
   if (process.env.DOCVAULT_DIR) return path.resolve(process.env.DOCVAULT_DIR);
-  return path.join(os.homedir(), 'Documents', 'DocVault');
+  // Home root, NOT ~/Documents/DocVault — that collides with the repo on
+  // case-insensitive macOS filesystems (Documents/docvault == Documents/DocVault).
+  return path.join(os.homedir(), 'DocVault');
 }
 
 const json = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] });
