@@ -22,6 +22,7 @@ export const CH = {
   listTags: 'dv:listTags',
   importFile: 'dv:importFile',
   openOriginal: 'dv:openOriginal',
+  readSource: 'dv:readSource',
   getConfig: 'dv:getConfig',
   updateConfig: 'dv:updateConfig',
   toggleStar: 'dv:toggleStar',
@@ -58,6 +59,8 @@ export interface DocVaultApi {
   listTags(): Promise<{ tag: string; count: number }[]>;
   importFile(): Promise<Doc | null>;
   openOriginal(relPath: string): Promise<void>;
+  /** Read the raw bytes of an imported original (pdf/docx/txt) for in-app viewing. */
+  readSource(relPath: string): Promise<Uint8Array>;
   getConfig(): Promise<VaultConfig>;
   updateConfig(patch: Partial<VaultConfig>): Promise<VaultConfig>;
   toggleStar(docId: string): Promise<VaultConfig>;
