@@ -26,6 +26,7 @@ const THEMES: { value: ThemeMode; label: string; icon: React.ComponentType<{ siz
 
 export function Settings(): React.JSX.Element {
   const config = useStore((s) => s.config);
+  const trash = useStore((s) => s.trash);
   const updateConfig = useStore((s) => s.updateConfig);
   const setTheme = useStore((s) => s.setTheme);
 
@@ -134,7 +135,7 @@ export function Settings(): React.JSX.Element {
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Starred" value={config.starred.length} />
           <Stat label="Recent" value={config.recent.length} />
-          <Stat label="In trash" value={config.trash.length} />
+          <Stat label="In trash" value={trash.length} />
         </div>
       </Section>
     </div>

@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import type { Doc, DocMeta, Product, SearchHit, ThemeMode, VaultConfig } from '@docvault/core';
+import type {
+  Doc,
+  DocMeta,
+  Product,
+  SearchHit,
+  ThemeMode,
+  TrashEntry,
+  VaultConfig,
+} from '@docvault/core';
 
 export type NavView =
   | 'home'
@@ -24,6 +32,8 @@ function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
 interface State {
   products: Product[];
   docs: DocMeta[];
+  /** Soft-deleted docs/products recoverable from trash (most-recent first). */
+  trash: TrashEntry[];
   config: VaultConfig | null;
   currentDoc: Doc | null;
   view: NavView;
@@ -45,6 +55,12 @@ interface State {
   saveCurrent: (content: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
+  /** Soft-delete a single doc (moves it to trash). */
+  trashDoc: (relPath: string) => Promise<void>;
+  /** Soft-delete a product and all its docs (moves it to trash). */
+  deleteProduct: (slug: string) => Promise<void>;
+  /** Restore a trashed doc/product back to its original location. */
+  restoreTrash: (trashPath: string) => Promise<void>;
   importFile: () => Promise<void>;
   toggleStar: (docId: string) => Promise<void>;
   updateConfig: (patch: Partial<VaultConfig>) => Promise<void>;
@@ -78,6 +94,7 @@ function slugify(title: string): string {
 export const useStore = create<State>((set, get) => ({
   products: [],
   docs: [],
+  trash: [],
   config: null,
   currentDoc: null,
   view: 'home',
@@ -91,12 +108,13 @@ export const useStore = create<State>((set, get) => ({
 
   refresh: async () => {
     try {
-      const [products, docs, config] = await Promise.all([
+      const [products, docs, config, trash] = await Promise.all([
         api().listProducts(),
         api().listDocs(),
         api().getConfig(),
+        api().listTrash(),
       ]);
-      set({ products, docs, config, loading: false, error: null });
+      set({ products, docs, config, trash, loading: false, error: null });
       get().applyTheme();
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
@@ -129,6 +147,39 @@ export const useStore = create<State>((set, get) => ({
   newProduct: async (title) => {
     await api().createProduct(slugify(title), { title });
     set({ products: await api().listProducts() });
+  },
+
+  trashDoc: async (relPath) => {
+    await api().trashDoc(relPath);
+    const cur = get().currentDoc;
+    // If the open doc was the one trashed, drop back to Home.
+    if (cur?.relPath === relPath) set({ currentDoc: null, view: 'home' });
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
+  },
+
+  deleteProduct: async (slug) => {
+    await api().deleteProduct(slug);
+    const cur = get().currentDoc;
+    // If the open doc lived under this product, drop back to Home.
+    if (cur && cur.relPath.startsWith(`docs/${slug}/`)) set({ currentDoc: null, view: 'home' });
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
+  },
+
+  restoreTrash: async (trashPath) => {
+    await api().restoreTrash(trashPath);
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
   },
 
   importFile: async () => {

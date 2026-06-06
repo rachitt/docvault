@@ -89,8 +89,41 @@ describe('DocVault core', () => {
     await dv.trashDoc(doc.relPath);
     expect(dv.getMeta(doc.frontmatter.id)).toBeNull();
     expect(dv.search({ query: 'disposable' })).toHaveLength(0);
-    const cfg = await dv.readConfig();
-    expect(cfg.trash).toContain(doc.relPath);
+    const trash = await dv.listTrash();
+    expect(trash).toHaveLength(1);
+    expect(trash[0]).toMatchObject({ kind: 'doc', relPath: doc.relPath, title: 'Temp' });
+  });
+
+  it('restores a trashed doc back into the index', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'comeback' });
+    await dv.trashDoc(doc.relPath);
+    const [entry] = await dv.listTrash();
+    await dv.restoreTrash(entry.trashPath);
+    expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+    expect(dv.search({ query: 'comeback' })).toHaveLength(1);
+    expect(await dv.listTrash()).toHaveLength(0);
+  });
+
+  it('deletes a product: trashes its docs and restores them on undo', async () => {
+    await dv.createDoc({ product: 'doomed', title: 'One', content: 'alpha' });
+    await dv.createDoc({ product: 'doomed', title: 'Two', content: 'beta' });
+    await dv.deleteProduct('doomed');
+    expect(dv.listDocs({ product: 'doomed' })).toHaveLength(0);
+    expect((await dv.listProducts()).some((p) => p.slug === 'doomed')).toBe(false);
+    const [entry] = await dv.listTrash();
+    expect(entry).toMatchObject({ kind: 'product', relPath: 'docs/doomed' });
+    await dv.restoreTrash(entry.trashPath);
+    expect(dv.listDocs({ product: 'doomed' })).toHaveLength(2);
+    expect((await dv.listProducts()).some((p) => p.slug === 'doomed')).toBe(true);
+  });
+
+  it('auto-purges trash items older than the retention window', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Old', content: 'expired' });
+    await dv.trashDoc(doc.relPath);
+    expect(await dv.listTrash()).toHaveLength(1);
+    // Purge anything older than 0ms — everything currently trashed qualifies.
+    await dv.purgeExpiredTrash(-1);
+    expect(await dv.listTrash()).toHaveLength(0);
   });
 
   describe('path containment', () => {

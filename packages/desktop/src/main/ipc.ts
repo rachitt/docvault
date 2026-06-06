@@ -74,6 +74,9 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     call('update_doc', { path: relPath, ...patch }),
   );
   h(CH.trashDoc, (relPath: string) => call('delete_doc', { path: relPath }));
+  h(CH.deleteProduct, (slug: string) => call('delete_product', { slug }));
+  h(CH.listTrash, () => call('list_trash'));
+  h(CH.restoreTrash, (trashPath: string) => call('restore_trash', { trash_path: trashPath }));
   h(CH.search, (opts: Record<string, unknown>) => call('search_docs', opts));
   h(CH.backlinks, (id: string) => call('get_backlinks', { id }));
   h(CH.listTags, () => call('list_tags'));

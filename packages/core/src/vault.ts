@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_CONFIG, type VaultConfig } from './types.js';
+import { DEFAULT_CONFIG, normalizeTrash, type VaultConfig } from './types.js';
 
 /**
  * Resolves the on-disk layout of a vault and manages the app-level config file.
@@ -78,7 +78,8 @@ export class Vault {
   async readConfig(): Promise<VaultConfig> {
     try {
       const raw = await readFile(this.configPath, 'utf8');
-      return { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as Partial<VaultConfig>) };
+      const parsed = JSON.parse(raw) as Partial<VaultConfig>;
+      return { ...DEFAULT_CONFIG, ...parsed, trash: normalizeTrash(parsed.trash) };
     } catch {
       return { ...DEFAULT_CONFIG };
     }

@@ -154,6 +154,43 @@ async function main(): Promise<void> {
   );
 
   server.registerTool(
+    'delete_product',
+    {
+      title: 'Delete product',
+      description:
+        'Soft-delete a product and all its docs (moves the docs/<slug> folder to trash). Recoverable until auto-purged.',
+      inputSchema: { slug },
+    },
+    tool(async ({ slug: productSlug }) => {
+      await dv.deleteProduct(productSlug);
+      return { trashed: `docs/${productSlug}` };
+    }),
+  );
+
+  server.registerTool(
+    'list_trash',
+    {
+      title: 'List trash',
+      description: 'List soft-deleted docs and products that can still be restored.',
+      inputSchema: {},
+    },
+    tool(() => dv.listTrash()),
+  );
+
+  server.registerTool(
+    'restore_trash',
+    {
+      title: 'Restore from trash',
+      description: 'Restore a trashed doc or product back to its original location by trash path.',
+      inputSchema: { trash_path: nonEmpty.describe('The trashPath from list_trash') },
+    },
+    tool(async ({ trash_path }) => {
+      await dv.restoreTrash(trash_path);
+      return { restored: trash_path };
+    }),
+  );
+
+  server.registerTool(
     'get_backlinks',
     {
       title: 'Get backlinks',
