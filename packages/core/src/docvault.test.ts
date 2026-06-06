@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -144,6 +144,41 @@ describe('DocVault core', () => {
     it('rejects creating a product with a traversing slug', async () => {
       await expect(dv.createProduct('../evil', { title: 'x' })).rejects.toThrow(/Invalid/);
     });
+
+    it('rejects reading a symlink inside the vault that points outside it', async () => {
+      const outside = await mkdtemp(path.join(tmpdir(), 'docvault-outside-'));
+      try {
+        const secret = path.join(outside, 'secret.txt');
+        await writeFile(secret, 'top secret', 'utf8');
+        // A symlink planted inside the vault that resolves to an external file.
+        await symlink(secret, path.join(root, 'docs', 'leak.md'));
+        await expect(dv.readDoc('docs/leak.md')).rejects.toThrow(/escapes vault/);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses to import a symlinked source file', async () => {
+      const outside = await mkdtemp(path.join(tmpdir(), 'docvault-outside-'));
+      try {
+        const real = path.join(outside, 'real.txt');
+        await writeFile(real, 'external content', 'utf8');
+        const link = path.join(root, 'pointer.txt');
+        await symlink(real, link);
+        await expect(dv.importFile(link)).rejects.toThrow(/symlink/i);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it('refuses to restore over a file that reclaimed the original path', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'first' });
+    await dv.trashDoc(doc.relPath);
+    const [entry] = await dv.listTrash();
+    // A new doc now occupies the original slug; restore must not clobber it.
+    await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'second' });
+    await expect(dv.restoreTrash(entry.trashPath)).rejects.toThrow(/already exists/);
   });
 
   describe('FTS query safety', () => {

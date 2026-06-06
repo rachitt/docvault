@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
+import DOMPurify from 'dompurify';
 import { Check, Pencil, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
@@ -30,7 +31,10 @@ function MermaidView({ code }: { code: string }): React.JSX.Element {
       .render(idRef.current, code)
       .then(({ svg }) => {
         if (!cancelled) {
-          setSvg(svg);
+          // Mermaid runs in securityLevel:'strict', but the diagram source comes
+          // from vault content an agent/import can author — sanitize the SVG once
+          // more before it ever reaches dangerouslySetInnerHTML.
+          setSvg(DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } }));
           setError(null);
         }
       })

@@ -31,6 +31,7 @@ export class VaultWatcher {
       awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
     });
     const handleUpsert = (abs: string) => {
+      if (!this.contained(abs)) return;
       if (abs.endsWith('.md')) {
         this.enqueue(abs, () => this.reindexOne(abs));
       } else if (isImportable(abs)) {
@@ -43,13 +44,27 @@ export class VaultWatcher {
       .on('add', handleUpsert)
       .on('change', handleUpsert)
       .on('unlink', (abs) => {
-        if (!abs.endsWith('.md')) return;
+        if (!abs.endsWith('.md') || !this.contained(abs)) return;
         this.enqueue(abs, async () => {
           const relPath = this.vault.rel(abs);
           this.indexer.removeByPath(relPath);
           this.onChange?.({ type: 'remove', relPath });
         });
       });
+  }
+
+  /**
+   * Defense-in-depth: confirm an event path canonically resolves inside the
+   * vault before we read it. `vault.abs()` throws on any symlink escape, so a
+   * link the watcher still surfaced can't pull in out-of-vault content.
+   */
+  private contained(abs: string): boolean {
+    try {
+      this.vault.abs(this.vault.rel(abs));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

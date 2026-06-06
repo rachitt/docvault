@@ -53,6 +53,18 @@ const slug = z
   .regex(/^[a-z0-9][a-z0-9._-]*$/i, 'must be a URL-safe slug (letters, digits, . _ -)');
 const statusEnum = z.enum(['draft', 'published', 'archived']);
 
+/**
+ * A vault-relative path (or a bare doc id). Rejects absolute paths, `..`
+ * segments, and NUL bytes up front so a malformed input fails with a clear
+ * message; `vault.abs()` in core remains the authoritative containment gate.
+ */
+const relPath = nonEmpty
+  .refine((p) => !p.includes('\0'), 'must not contain NUL bytes')
+  .refine(
+    (p) => !path.isAbsolute(p) && !p.split(/[\\/]/).includes('..'),
+    'must be a vault-relative path (no leading slash or ".." segments)',
+  );
+
 async function main(): Promise<void> {
   const vaultDir = resolveVaultDir();
   const dv = await DocVault.open(vaultDir);
@@ -102,7 +114,7 @@ async function main(): Promise<void> {
       title: 'Read document',
       description: 'Read a full document (frontmatter + markdown body) by id or vault-relative path.',
       inputSchema: {
-        id_or_path: nonEmpty.describe('Doc id (ULID) or path like docs/superchat/overview.md'),
+        id_or_path: relPath.describe('Doc id (ULID) or path like docs/superchat/overview.md'),
       },
     },
     tool(({ id_or_path }) => dv.readDoc(id_or_path)),
@@ -130,7 +142,7 @@ async function main(): Promise<void> {
       title: 'Update document',
       description: 'Update a doc body and/or selected frontmatter fields by vault-relative path.',
       inputSchema: {
-        path: nonEmpty.describe('Vault-relative path, e.g. docs/superchat/overview.md'),
+        path: relPath.describe('Vault-relative path, e.g. docs/superchat/overview.md'),
         content: z.string().optional(),
         title: z.string().optional(),
         tags: z.array(z.string()).optional(),
@@ -145,7 +157,7 @@ async function main(): Promise<void> {
     {
       title: 'Delete document',
       description: 'Soft-delete a doc (moves it to trash) by vault-relative path.',
-      inputSchema: { path: nonEmpty },
+      inputSchema: { path: relPath },
     },
     tool(async ({ path: relPath }) => {
       await dv.trashDoc(relPath);
@@ -182,7 +194,7 @@ async function main(): Promise<void> {
     {
       title: 'Restore from trash',
       description: 'Restore a trashed doc or product back to its original location by trash path.',
-      inputSchema: { trash_path: nonEmpty.describe('The trashPath from list_trash') },
+      inputSchema: { trash_path: relPath.describe('The trashPath from list_trash') },
     },
     tool(async ({ trash_path }) => {
       await dv.restoreTrash(trash_path);
@@ -206,7 +218,7 @@ async function main(): Promise<void> {
       title: 'Link documents',
       description: 'Add an explicit outbound link from one doc to a target doc id.',
       inputSchema: {
-        from_path: nonEmpty.describe('Vault-relative path of the source doc'),
+        from_path: relPath.describe('Vault-relative path of the source doc'),
         target_id: nonEmpty.describe('Doc id to link to'),
       },
     },

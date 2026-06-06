@@ -1,7 +1,31 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_CONFIG, normalizeTrash, type VaultConfig } from './types.js';
+
+/**
+ * Resolve `target` to its canonical on-disk path, following symlinks. The target
+ * may not exist yet (e.g. a path we're about to create), so we canonicalize the
+ * longest existing prefix and re-append the not-yet-created tail. This surfaces a
+ * symlinked ancestor that points elsewhere, which `path.resolve` alone hides.
+ */
+function canonicalize(target: string): string {
+  let dir = target;
+  const tail: string[] = [];
+  while (!existsSync(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // reached the filesystem root
+    tail.unshift(path.basename(dir));
+    dir = parent;
+  }
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    real = dir;
+  }
+  return tail.length ? path.join(real, ...tail) : real;
+}
 
 /**
  * Resolves the on-disk layout of a vault and manages the app-level config file.
@@ -39,16 +63,32 @@ export class Vault {
     return path.join(this.metaDir, 'config.json');
   }
 
+  /** Canonical (symlink-resolved) vault root, used for containment checks. */
+  private get canonicalRoot(): string {
+    try {
+      return realpathSync(this.root);
+    } catch {
+      return this.root;
+    }
+  }
+
   /**
    * Absolute path for a doc path that is relative to the vault root.
    * Rejects any path that would escape the vault (e.g. `../../etc/passwd` or an
    * absolute path), so caller-supplied paths from the MCP server / UI cannot
-   * read or write outside the vault.
+   * read or write outside the vault. A two-stage check: a lexical gate against
+   * `..`/absolute traversal, then a symlink gate that canonicalizes the path so a
+   * symlink placed *inside* the vault can't redirect a read/write outside it.
    */
   abs(relPath: string): string {
     const resolved = path.resolve(this.root, relPath);
     if (resolved !== this.root && !resolved.startsWith(this.root + path.sep)) {
       throw new Error(`Path escapes vault: ${relPath}`);
+    }
+    const root = this.canonicalRoot;
+    const canonical = canonicalize(resolved);
+    if (canonical !== root && !canonical.startsWith(root + path.sep)) {
+      throw new Error(`Path escapes vault (symlink): ${relPath}`);
     }
     return resolved;
   }

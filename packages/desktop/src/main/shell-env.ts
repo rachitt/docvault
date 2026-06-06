@@ -16,10 +16,14 @@ export function loginPath(): string {
   if (cachedPath) return cachedPath;
   const fallback = `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
   try {
-    const shell = process.env.SHELL || '/bin/zsh';
+    const envShell = process.env.SHELL;
+    // Only trust SHELL if it's a plain absolute path (no spaces, flags, or shell
+    // metacharacters) so a tampered env var can't inject a command here.
+    const shell = envShell && /^\/[\w./-]+$/.test(envShell) ? envShell : '/bin/zsh';
     const out = execSync(`${shell} -lic 'printf "%s" "$PATH"'`, {
       encoding: 'utf8',
       timeout: 4000,
+      stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
     cachedPath = out ? `${out}:${fallback}` : fallback;
   } catch {
