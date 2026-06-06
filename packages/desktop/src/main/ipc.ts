@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { dialog, ipcMain, shell, type BrowserWindow } from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -93,14 +94,23 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     if (res.canceled || !res.filePaths[0]) return null;
     return call('import_file', { path: res.filePaths[0] });
   });
-  h(CH.openOriginal, async (relPath: string) => {
-    // Contain to the vault: a crafted relPath must not open arbitrary files.
+  // Resolve a vault-relative path to an absolute one, refusing anything that
+  // escapes the vault root (a crafted relPath must not reach arbitrary files).
+  const resolveInVault = (relPath: string): string => {
     const root = path.resolve(vaultDir);
     const target = path.resolve(root, relPath);
     if (target !== root && !target.startsWith(root + path.sep)) {
       throw new Error(`Path escapes vault: ${relPath}`);
     }
-    await shell.openPath(target);
+    return target;
+  };
+  h(CH.openOriginal, async (relPath: string) => {
+    await shell.openPath(resolveInVault(relPath));
+  });
+  h(CH.readSource, async (relPath: string) => {
+    const buf = await readFile(resolveInVault(relPath));
+    // Return a plain Uint8Array view so it crosses IPC via structured clone.
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   });
 
   // --- AI assistant ---
@@ -110,15 +120,22 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   ipcMain.handle(CH.aiCancel, (_e, requestId: string) => ai.cancel(requestId));
 
   // --- Surface external edits (e.g. an agent writing files) to the UI ---
+  // Carry the set of changed vault-relative paths so the renderer can tell
+  // whether the *open* doc changed and reconcile it instead of clobbering.
   let debounce: ReturnType<typeof setTimeout> | null = null;
-  const watcher = chokidar.watch(path.join(vaultDir, 'docs'), {
+  const changed = new Set<string>();
+  const root = path.resolve(vaultDir);
+  const watcher = chokidar.watch([path.join(vaultDir, 'docs'), path.join(vaultDir, 'assets')], {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   });
-  watcher.on('all', () => {
+  watcher.on('all', (_event, changedPath) => {
+    if (changedPath) changed.add(path.relative(root, changedPath));
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged);
+      const paths = [...changed];
+      changed.clear();
+      if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged, paths);
     }, 350);
   });
 

@@ -28,6 +28,13 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
   "prompt() is and will not be supported"), so `if (value)` guards never fire — buttons look dead.
   Collect input via an in-app inline `<input>`/modal instead (`Sidebar.tsx` InlineInput).
 - **Rebuild /Applications after every large change**: the running app is the `/Applications`
-  copy, which does NOT auto-update from dev builds. After any substantial change, repackage and
-  reinstall before testing/marking done: `pnpm --filter @docvault/desktop build` → package →
-  `ditto dist-app/mac-arm64/DocVault.app /Applications/DocVault.app`.
+  copy, which does NOT auto-update from dev builds. This is now one command — `pnpm reinstall`
+  (`packages/desktop/scripts/reinstall.sh`): build → package unsigned `.app` → quit the running
+  copy → `ditto` to `/Applications/DocVault.app` → relaunch. Flags: `--no-launch`, `--no-build`,
+  `--no-quit` (refresh the bundle in place without killing a running instance).
+  Don't hand-run the old build → package → ditto sequence anymore.
+- **/Applications auto-refreshes on commit**: git `post-commit` + `post-merge` hooks
+  (`.githooks/`, activated via `core.hooksPath`; run `pnpm setup:hooks` after a fresh clone) run
+  `pnpm reinstall --no-launch --no-quit` in the background, so the canonical installed app tracks
+  committed code. It's lock-debounced; logs to `/tmp/docvault-reinstall.log`. A running app is
+  refreshed in place — restart DocVault to see the change.

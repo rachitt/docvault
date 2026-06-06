@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ulid } from 'ulid';
 import { parseDoc, serializeDoc } from '../doc.js';
@@ -90,4 +90,35 @@ export async function importFile(
   // Re-parse to normalize exactly what landed on disk.
   const written = parseDoc(serialized, vault, sidecarAbs);
   return { doc: written, original: vault.rel(destAbs) };
+}
+
+/**
+ * Re-extract the text of an already-imported original whose bytes changed on
+ * disk, rewriting its `<file>.md` sidecar in place while preserving the
+ * sidecar's identity (id, title, tags, created). Returns the refreshed sidecar
+ * doc, or null when the file isn't importable or has no managed sidecar yet
+ * (we only refresh sidecars that were created by a prior import).
+ */
+export async function reextract(vault: Vault, originalAbs: string): Promise<Doc | null> {
+  const ext = path.extname(originalAbs).toLowerCase() as ImportableExt;
+  const extractor = EXTRACTORS[ext];
+  if (!extractor) return null;
+
+  const sidecarAbs = `${originalAbs}.md`;
+  if (!existsSync(sidecarAbs)) return null;
+
+  const existing = parseDoc(await readFile(sidecarAbs, 'utf8'), vault, sidecarAbs);
+  const text = await extractor(originalAbs);
+  const doc: Doc = {
+    ...existing,
+    frontmatter: {
+      ...existing.frontmatter,
+      updated: new Date().toISOString(),
+      source: existing.frontmatter.source ?? vault.rel(originalAbs),
+    },
+    content: text || '_(no extractable text)_',
+  };
+  const serialized = serializeDoc(doc);
+  await writeFile(sidecarAbs, serialized, 'utf8');
+  return parseDoc(serialized, vault, sidecarAbs);
 }
