@@ -40,6 +40,8 @@ interface State {
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
+  /** Replace the open doc in place (e.g. after reloading it from disk). */
+  setCurrentDoc: (doc: Doc) => void;
   saveCurrent: (content: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
@@ -107,6 +109,8 @@ export const useStore = create<State>((set, get) => ({
     const config = await api().pushRecent(doc.frontmatter.id);
     set({ config });
   },
+
+  setCurrentDoc: (doc) => set({ currentDoc: doc }),
 
   saveCurrent: async (content) => {
     const cur = get().currentDoc;

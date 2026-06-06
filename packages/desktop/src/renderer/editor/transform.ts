@@ -1,4 +1,5 @@
 import {
+  restoreWikilinks,
   serializeCallout,
   serializeMermaid,
   splitMarkdownSegments,
@@ -84,5 +85,5 @@ export async function blocksToMarkdown(
   }
   await flush();
 
-  return parts.join('\n\n') + '\n';
+  return restoreWikilinks(parts.join('\n\n')) + '\n';
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  restoreWikilinks,
   serializeCallout,
   serializeMermaid,
   splitMarkdownSegments,
@@ -60,6 +61,15 @@ describe('splitMarkdownSegments', () => {
     expect(splitMarkdownSegments('> [!INFO]')).toEqual<Segment[]>([
       { kind: 'callout', calloutType: 'info', body: '' },
     ]);
+  });
+
+  it('restores escaped wikilink brackets and alias pipes', () => {
+    expect(restoreWikilinks('see \\[\\[Architecture\\]\\] now')).toBe('see [[Architecture]] now');
+    expect(restoreWikilinks('\\[\\[Doc\\|alias\\]\\]')).toBe('[[Doc|alias]]');
+    // Unescaped (or partially escaped) forms are normalized too.
+    expect(restoreWikilinks('[[Plain]]')).toBe('[[Plain]]');
+    // A lone escaped bracket that is not a wikilink is left untouched.
+    expect(restoreWikilinks('an array \\[0\\]')).toBe('an array \\[0\\]');
   });
 
   it('keeps multiple blocks in document order', () => {

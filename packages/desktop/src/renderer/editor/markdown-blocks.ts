@@ -93,6 +93,18 @@ export function serializeMermaid(code: string): string {
   return '```mermaid\n' + code.replace(/\n+$/, '') + '\n```';
 }
 
+/**
+ * BlockNote's markdown exporter escapes `[` / `]` (and `|`) to avoid producing
+ * accidental link syntax, which would turn `[[Doc]]` into `\[\[Doc\]\]` and
+ * break wikilink parsing in core. Restore the brackets (and unescape the inner
+ * alias pipe) so [[wikilinks]] survive the round-trip to disk.
+ */
+export function restoreWikilinks(md: string): string {
+  return md.replace(/\\?\[\\?\[([^\]\n]*?)\\?\]\\?\]/g, (_m, inner: string) => {
+    return `[[${inner.replace(/\\([|[\]])/g, '$1')}]]`;
+  });
+}
+
 /** Serialize a callout back to a `> [!TYPE]` alert blockquote. */
 export function serializeCallout(type: CalloutType, body: string): string {
   const marker = `> [!${type.toUpperCase()}]`;
