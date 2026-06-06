@@ -1,6 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
 import type { WebContents } from 'electron';
 import { EV } from '../shared/ipc.js';
+import { enhancedEnv, resolveBin } from './shell-env.js';
 
 /**
  * Runs the in-app AI assistant by spawning Claude Code (or Codex) in headless
@@ -21,12 +24,15 @@ export class AiBridge {
     this.cancel(requestId);
     const { cmd, args } =
       this.backend === 'codex'
-        ? { cmd: 'codex', args: ['exec', prompt] }
-        : { cmd: 'claude', args: ['-p', prompt] };
+        ? { cmd: resolveBin('codex', ['/opt/homebrew/bin/codex']), args: ['exec', prompt] }
+        : {
+            cmd: resolveBin('claude', [path.join(os.homedir(), '.local/bin/claude')]),
+            args: ['-p', prompt],
+          };
 
     let proc: ChildProcess;
     try {
-      proc = spawn(cmd, args, { cwd: this.vaultDir, env: process.env });
+      proc = spawn(cmd, args, { cwd: this.vaultDir, env: enhancedEnv() });
     } catch (err) {
       sender.send(EV.aiDone, requestId, String(err));
       return;

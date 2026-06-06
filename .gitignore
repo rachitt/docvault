@@ -1,8 +1,9 @@
 node_modules/
 dist/
-build/
 release/
 out/
+dist-app/
+packages/desktop/build/icon.iconset/
 *.tsbuildinfo
 .DS_Store
 .env

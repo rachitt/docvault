@@ -1,0 +1,23 @@
+appId: com.rachit.docvault
+productName: DocVault
+directories:
+  buildResources: build
+  output: dist-app
+# No asar: the app spawns a system-node MCP sidecar that must read plain files
+# and dlopen better-sqlite3.
+asar: false
+# Do NOT rebuild native modules for Electron — better-sqlite3 runs under the
+# system-node sidecar and must keep its node ABI.
+npmRebuild: false
+nodeGypRebuild: false
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+mac:
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  identity: null
+  target:
+    - target: dir
+      arch: arm64

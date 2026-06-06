@@ -6,6 +6,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import chokidar from 'chokidar';
 import { AiBridge } from './ai.js';
 import { ConfigStore } from './config.js';
+import { enhancedEnv, resolveBin } from './shell-env.js';
 import { CH, EV } from '../shared/ipc.js';
 
 const require = createRequire(import.meta.url);
@@ -24,8 +25,9 @@ function resolveMcpServer(): string {
  */
 export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise<() => void> {
   const transport = new StdioClientTransport({
-    command: 'node',
+    command: resolveBin('node', [process.execPath.includes('node') ? process.execPath : '']),
     args: [resolveMcpServer(), '--vault', vaultDir],
+    env: enhancedEnv() as Record<string, string>,
   });
   const client = new Client({ name: 'docvault-desktop', version: '0.1.0' });
   await client.connect(transport);

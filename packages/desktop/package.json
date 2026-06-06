@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview"
+    "start": "electron-vite preview",
+    "icon": "python3 build/gen_icon.py build/icon.png",
+    "package:mac": "electron-vite build && electron-builder --mac --dir"
   },
   "dependencies": {
     "@docvault/core": "workspace:*",
@@ -21,6 +23,7 @@
     "@blocknote/mantine": "^0.25.1",
     "@blocknote/react": "^0.25.1",
     "@tailwindcss/vite": "^4.0.0",
+    "electron-builder": "^25.1.8",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
