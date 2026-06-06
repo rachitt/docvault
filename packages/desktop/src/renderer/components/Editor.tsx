@@ -32,6 +32,14 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
     };
   }, [editor, doc.content]);
 
+  // Cancel any pending debounced save when the editor unmounts (e.g. switching
+  // docs) so a stale timer can't fire against an old doc after teardown.
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
   const onChange = (): void => {
     if (!ready) return;
     if (timer.current) clearTimeout(timer.current);

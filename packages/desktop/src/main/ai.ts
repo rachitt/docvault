@@ -1,70 +1,22 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import os from 'node:os';
-import path from 'node:path';
 import type { WebContents } from 'electron';
 import { EV } from '../shared/ipc.js';
-import { enhancedEnv, resolveBin } from './shell-env.js';
 
 /**
- * Runs the in-app AI assistant by spawning Claude Code (or Codex) in headless
- * mode with the vault as the working directory. No API key required — it reuses
- * the user's logged-in CLI and the registered DocVault MCP for grounded answers.
+ * AI bridge (backend disconnected).
+ *
+ * This previously spawned the Claude Code CLI (`claude -p`) headless with the
+ * vault as the working directory. That has been removed: a full-permission
+ * agent running over untrusted document content is an unacceptable
+ * prompt-injection surface. The renderer AI panel still calls `ask`/`cancel`,
+ * so the interface is preserved, but no process is launched — requests resolve
+ * immediately with a "not connected" notice until a safe backend is wired up.
  */
 export class AiBridge {
-  private procs = new Map<string, ChildProcess>();
-
-  constructor(
-    private readonly vaultDir: string,
-    private readonly backend: 'claude' | 'codex' = 'claude',
-    /** When false (default) the full answer is delivered once on completion. */
-    private readonly streaming = false,
-  ) {}
-
-  ask(sender: WebContents, requestId: string, prompt: string): void {
-    this.cancel(requestId);
-    const { cmd, args } =
-      this.backend === 'codex'
-        ? { cmd: resolveBin('codex', ['/opt/homebrew/bin/codex']), args: ['exec', prompt] }
-        : {
-            cmd: resolveBin('claude', [path.join(os.homedir(), '.local/bin/claude')]),
-            args: ['-p', prompt],
-          };
-
-    let proc: ChildProcess;
-    try {
-      proc = spawn(cmd, args, { cwd: this.vaultDir, env: enhancedEnv() });
-    } catch (err) {
-      sender.send(EV.aiDone, requestId, String(err));
-      return;
-    }
-    this.procs.set(requestId, proc);
-
-    let buffer = '';
-    proc.stdout?.on('data', (d: Buffer) => {
-      const text = d.toString();
-      if (this.streaming) sender.send(EV.aiChunk, requestId, text);
-      else buffer += text;
-    });
-    proc.stderr?.on('data', (d: Buffer) => {
-      // Surface CLI progress/errors quietly to the console, not the chat stream.
-      console.error(`[ai:${this.backend}]`, d.toString().trim());
-    });
-    proc.on('close', (code) => {
-      this.procs.delete(requestId);
-      if (!this.streaming && buffer) sender.send(EV.aiChunk, requestId, buffer);
-      sender.send(EV.aiDone, requestId, code === 0 ? undefined : `exited with code ${code}`);
-    });
-    proc.on('error', (err) => {
-      this.procs.delete(requestId);
-      sender.send(EV.aiDone, requestId, err.message);
-    });
+  ask(sender: WebContents, requestId: string, _prompt: string): void {
+    sender.send(EV.aiDone, requestId, 'AI assistant is not connected to a backend yet.');
   }
 
-  cancel(requestId: string): void {
-    const proc = this.procs.get(requestId);
-    if (proc) {
-      proc.kill('SIGTERM');
-      this.procs.delete(requestId);
-    }
+  cancel(_requestId: string): void {
+    // No-op: nothing is running.
   }
 }

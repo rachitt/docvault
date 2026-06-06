@@ -11,6 +11,7 @@ export default function App(): React.JSX.Element {
   const refresh = useStore((s) => s.refresh);
   const setPalette = useStore((s) => s.setPalette);
   const loading = useStore((s) => s.loading);
+  const error = useStore((s) => s.error);
 
   useEffect(() => {
     void refresh();
@@ -41,6 +42,11 @@ export default function App(): React.JSX.Element {
       {loading && (
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center text-sm text-neutral-400">
           Loading vault…
+        </div>
+      )}
+      {error && !loading && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow">
+          Failed to load vault: {error}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 export { DocVault } from './docvault.js';
 export { Vault } from './vault.js';
-export { DocStore, parseDoc, serializeDoc, slugify } from './doc.js';
-export { Indexer } from './indexer.js';
+export { DocStore, assertSafeSegment, parseDoc, serializeDoc, slugify } from './doc.js';
+export { Indexer, toFtsMatch } from './indexer.js';
 export { VaultWatcher } from './watcher.js';
 export { extractWikilinks } from './links.js';
 export { importFile, isImportable } from './import/index.js';

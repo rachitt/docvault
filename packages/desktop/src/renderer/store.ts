@@ -13,6 +13,7 @@ interface State {
   rightTab: RightTab;
   paletteOpen: boolean;
   loading: boolean;
+  error: string | null;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -47,14 +48,19 @@ export const useStore = create<State>((set, get) => ({
   rightTab: 'outline',
   paletteOpen: false,
   loading: true,
+  error: null,
 
   refresh: async () => {
-    const [products, docs, config] = await Promise.all([
-      api().listProducts(),
-      api().listDocs(),
-      api().getConfig(),
-    ]);
-    set({ products, docs, config, loading: false });
+    try {
+      const [products, docs, config] = await Promise.all([
+        api().listProducts(),
+        api().listDocs(),
+        api().getConfig(),
+      ]);
+      set({ products, docs, config, loading: false, error: null });
+    } catch (e) {
+      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   openDoc: async (idOrPath) => {
