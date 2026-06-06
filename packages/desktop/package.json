@@ -13,6 +13,7 @@
     "icon": "python3 build/gen_icon.py build/icon.png",
     "package:mac": "electron-vite build && electron-builder --mac --dir",
     "package:dmg": "electron-vite build && electron-builder --mac dmg",
+    "dev-cert": "bash scripts/dev-cert.sh",
     "reinstall": "bash scripts/reinstall.sh",
     "release": "electron-vite build && electron-builder --mac dmg --publish always"
   },
