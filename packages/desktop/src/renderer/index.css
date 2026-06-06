@@ -157,6 +157,12 @@ body {
   border: 1px solid var(--dv-border);
   border-radius: 0.5rem;
   overflow: hidden;
+  /* The editor's prose column is narrow (~672px). Let diagram blocks break out
+     wider than the text — up to 900px, centered — so dense diagrams are legible.
+     The calc keeps the breakout bounded so it stays within the editor pane. */
+  width: min(900px, calc(100% + 8rem));
+  margin-left: 50%;
+  transform: translateX(-50%);
 }
 .dv-mermaid-toolbar {
   display: flex;
