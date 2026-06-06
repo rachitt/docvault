@@ -4,6 +4,18 @@ import type { Doc, DocMeta, SearchHit, SearchOptions } from './types.js';
 import type { Vault } from './vault.js';
 
 /**
+ * Turn arbitrary user input into a safe FTS5 MATCH expression. Each word is
+ * tokenized and wrapped as a quoted phrase so that FTS5 operators (`*`, `:`,
+ * `-`, `"`, `AND`, `NEAR`, parentheses) in the input can never reach the query
+ * parser and crash the search. Returns null when there is nothing to match.
+ */
+export function toFtsMatch(query: string): string | null {
+  const terms = query.match(/[\p{L}\p{N}_]+/gu);
+  if (!terms || terms.length === 0) return null;
+  return terms.map((t) => `"${t}"`).join(' ');
+}
+
+/**
  * SQLite-backed search/metadata index over the markdown vault. The files on
  * disk remain the source of truth; this DB is a rebuildable cache that powers
  * fast full-text search, tag filters, and backlinks.
@@ -53,6 +65,14 @@ export class Indexer {
     const { frontmatter: fm } = doc;
     const product = this.vault.productOf(doc.relPath);
     const tx = this.db.transaction(() => {
+      // If another doc currently occupies this rel_path (e.g. a file was moved,
+      // or two files share an id), drop it first so the UNIQUE(rel_path)
+      // constraint can't throw and the index stays consistent with disk.
+      const conflict = this.db
+        .prepare('SELECT id FROM docs WHERE rel_path = ? AND id != ?')
+        .get(doc.relPath, fm.id) as { id: string } | undefined;
+      if (conflict) this.deleteDocRows(conflict.id);
+
       this.db
         .prepare(
           `INSERT INTO docs (id, rel_path, title, product, status, created, updated, source)
@@ -98,23 +118,36 @@ export class Indexer {
   }
 
   removeById(docId: string): void {
-    const tx = this.db.transaction(() => {
-      this.db.prepare('DELETE FROM docs_fts WHERE doc_id = ?').run(docId);
-      this.db.prepare('DELETE FROM tags WHERE doc_id = ?').run(docId);
-      this.db.prepare('DELETE FROM links WHERE src_id = ?').run(docId);
-      this.db.prepare('DELETE FROM docs WHERE id = ?').run(docId);
-    });
-    tx();
+    this.db.transaction(() => this.deleteDocRows(docId))();
   }
 
-  private rowToMeta(row: Record<string, unknown>): DocMeta {
-    const id = row.id as string;
-    const tags = this.db
-      .prepare('SELECT tag FROM tags WHERE doc_id = ? ORDER BY tag')
-      .all(id)
-      .map((t) => (t as { tag: string }).tag);
+  /** Delete every row for a doc across all tables. Caller wraps in a tx. */
+  private deleteDocRows(docId: string): void {
+    this.db.prepare('DELETE FROM docs_fts WHERE doc_id = ?').run(docId);
+    this.db.prepare('DELETE FROM tags WHERE doc_id = ?').run(docId);
+    this.db.prepare('DELETE FROM links WHERE src_id = ?').run(docId);
+    this.db.prepare('DELETE FROM docs WHERE id = ?').run(docId);
+  }
+
+  /** Batch-load tags for a set of doc ids (avoids an N+1 query per row). */
+  private tagsByDoc(ids: string[]): Map<string, string[]> {
+    const map = new Map<string, string[]>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db
+      .prepare(`SELECT doc_id, tag FROM tags WHERE doc_id IN (${placeholders}) ORDER BY tag`)
+      .all(...ids) as { doc_id: string; tag: string }[];
+    for (const { doc_id, tag } of rows) {
+      const list = map.get(doc_id);
+      if (list) list.push(tag);
+      else map.set(doc_id, [tag]);
+    }
+    return map;
+  }
+
+  private rowToMeta(row: Record<string, unknown>, tags: string[]): DocMeta {
     return {
-      id,
+      id: row.id as string,
       title: row.title as string,
       relPath: row.rel_path as string,
       product: (row.product as string | null) ?? null,
@@ -124,6 +157,12 @@ export class Indexer {
       updated: row.updated as string,
       source: (row.source as string | null) ?? null,
     };
+  }
+
+  /** Map a set of doc rows to metadata, batch-loading their tags. */
+  private rowsToMeta(rows: Record<string, unknown>[]): DocMeta[] {
+    const tags = this.tagsByDoc(rows.map((r) => r.id as string));
+    return rows.map((r) => this.rowToMeta(r, tags.get(r.id as string) ?? []));
   }
 
   /** List doc metadata, optionally filtered by product and/or tag. */
@@ -142,41 +181,54 @@ export class Indexer {
     const rows = this.db
       .prepare(`SELECT * FROM docs ${where} ORDER BY updated DESC`)
       .all(...params) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToMeta(r));
+    return this.rowsToMeta(rows);
   }
 
   getById(id: string): DocMeta | null {
     const row = this.db.prepare('SELECT * FROM docs WHERE id = ?').get(id) as
       | Record<string, unknown>
       | undefined;
-    return row ? this.rowToMeta(row) : null;
+    return row ? this.rowToMeta(row, this.tagsByDoc([id]).get(id) ?? []) : null;
   }
 
   /** Full-text search with bm25 ranking and highlighted snippets. */
   search(opts: SearchOptions): SearchHit[] {
+    const match = toFtsMatch(opts.query);
+    if (!match) return [];
     const limit = opts.limit ?? 25;
+    // Product/tag filters are applied in SQL (not after LIMIT) so a scoped
+    // search returns up to `limit` matching docs, not just those that happen to
+    // fall in the first `limit` raw FTS hits.
+    const params: Record<string, unknown> = { match, limit };
+    let filters = '';
+    if (opts.product) {
+      filters += ' AND d.product = @product';
+      params.product = opts.product;
+    }
+    if (opts.tag) {
+      filters += ' AND d.id IN (SELECT doc_id FROM tags WHERE tag = @tag)';
+      params.tag = opts.tag;
+    }
     // Column weights: doc_id (ignored), title 5x, body 1x.
     const rows = this.db
       .prepare(
-        `SELECT doc_id AS id,
+        `SELECT d.*,
                 bm25(docs_fts, 0.0, 5.0, 1.0) AS rank,
                 snippet(docs_fts, 2, '«', '»', '…', 12) AS snippet
          FROM docs_fts
-         WHERE docs_fts MATCH ?
+         JOIN docs d ON d.id = docs_fts.doc_id
+         WHERE docs_fts MATCH @match${filters}
          ORDER BY rank
-         LIMIT ?`,
+         LIMIT @limit`,
       )
-      .all(opts.query, limit) as { id: string; rank: number; snippet: string }[];
+      .all(params) as (Record<string, unknown> & { rank: number; snippet: string })[];
 
-    const hits: SearchHit[] = [];
-    for (const r of rows) {
-      const meta = this.getById(r.id);
-      if (!meta) continue;
-      if (opts.product && meta.product !== opts.product) continue;
-      if (opts.tag && !meta.tags.includes(opts.tag)) continue;
-      hits.push({ ...meta, snippet: r.snippet, rank: r.rank });
-    }
-    return hits;
+    const tags = this.tagsByDoc(rows.map((r) => r.id as string));
+    return rows.map((r) => ({
+      ...this.rowToMeta(r, tags.get(r.id as string) ?? []),
+      snippet: r.snippet,
+      rank: r.rank,
+    }));
   }
 
   /** Docs that link TO the given doc (resolved by id or title). */
@@ -192,7 +244,7 @@ export class Indexer {
          WHERE l.dst IN (${placeholders})`,
       )
       .all(...targets) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToMeta(r));
+    return this.rowsToMeta(rows);
   }
 
   listTags(): { tag: string; count: number }[] {
@@ -209,6 +261,6 @@ export class Indexer {
   }
 
   close(): void {
-    this.db.close();
+    if (this.db.open) this.db.close();
   }
 }

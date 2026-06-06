@@ -24,7 +24,11 @@ const NAV: { key: NavView; label: string; icon: React.ComponentType<{ size?: num
 ];
 
 export function Sidebar(): React.JSX.Element {
-  const { products, docs, config, view, currentDoc } = useStore();
+  const products = useStore((s) => s.products);
+  const docs = useStore((s) => s.docs);
+  const config = useStore((s) => s.config);
+  const view = useStore((s) => s.view);
+  const currentDoc = useStore((s) => s.currentDoc);
   const setView = useStore((s) => s.setView);
   const openDoc = useStore((s) => s.openDoc);
   const newDoc = useStore((s) => s.newDoc);

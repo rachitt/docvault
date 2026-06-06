@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 let cleanup: (() => void) | null = null;
 import os from 'node:os';
 import path from 'node:path';
@@ -25,9 +25,22 @@ async function createWindow(): Promise<void> {
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
+      nodeIntegration: false,
     },
+  });
+
+  // Never let renderer content navigate away from the app or spawn windows;
+  // open any external link in the user's browser instead.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const isDev = devUrl ? url.startsWith(devUrl) : false;
+    if (!isDev && !url.startsWith('file://')) e.preventDefault();
   });
 
   cleanup = await registerIpc(win, resolveVaultDir());

@@ -39,9 +39,18 @@ export class Vault {
     return path.join(this.metaDir, 'config.json');
   }
 
-  /** Absolute path for a doc path that is relative to the vault root. */
+  /**
+   * Absolute path for a doc path that is relative to the vault root.
+   * Rejects any path that would escape the vault (e.g. `../../etc/passwd` or an
+   * absolute path), so caller-supplied paths from the MCP server / UI cannot
+   * read or write outside the vault.
+   */
   abs(relPath: string): string {
-    return path.join(this.root, relPath);
+    const resolved = path.resolve(this.root, relPath);
+    if (resolved !== this.root && !resolved.startsWith(this.root + path.sep)) {
+      throw new Error(`Path escapes vault: ${relPath}`);
+    }
+    return resolved;
   }
 
   /** Vault-relative path (posix-style separators) for an absolute path. */

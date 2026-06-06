@@ -1,6 +1,7 @@
 /** Shared types for the DocVault core library. */
 
-export type DocStatus = 'draft' | 'published' | 'archived';
+export const DOC_STATUSES = ['draft', 'published', 'archived'] as const;
+export type DocStatus = (typeof DOC_STATUSES)[number];
 
 /** YAML frontmatter stored at the top of every managed markdown doc. */
 export interface DocFrontmatter {

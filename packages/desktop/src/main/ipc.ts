@@ -36,14 +36,17 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   const call = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => {
     const res = (await client.callTool({ name, arguments: args })) as {
       content: { type: string; text: string }[];
+      isError?: boolean;
     };
     const text = res.content?.[0]?.text ?? 'null';
+    // Tool errors come back as a result with isError + a plain-text message
+    // (not JSON), so surface the real message instead of a JSON parse error.
+    if (res.isError) throw new Error(text);
     return JSON.parse(text) as T;
   };
 
   const config = new ConfigStore(vaultDir);
-  const cfg = await config.read();
-  const ai = new AiBridge(vaultDir, cfg.aiBackend, cfg.aiStreaming);
+  const ai = new AiBridge();
 
   const h = <T extends unknown[], R>(channel: string, fn: (...args: T) => R | Promise<R>) =>
     ipcMain.handle(channel, (_e, ...args) => fn(...(args as T)));
@@ -81,7 +84,13 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     return call('import_file', { path: res.filePaths[0] });
   });
   h(CH.openOriginal, async (relPath: string) => {
-    await shell.openPath(path.join(vaultDir, relPath));
+    // Contain to the vault: a crafted relPath must not open arbitrary files.
+    const root = path.resolve(vaultDir);
+    const target = path.resolve(root, relPath);
+    if (target !== root && !target.startsWith(root + path.sep)) {
+      throw new Error(`Path escapes vault: ${relPath}`);
+    }
+    await shell.openPath(target);
   });
 
   // --- AI assistant ---

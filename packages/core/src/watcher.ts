@@ -13,6 +13,8 @@ export type VaultChange = { type: 'upsert' | 'remove'; relPath: string };
  */
 export class VaultWatcher {
   private watcher: FSWatcher | null = null;
+  /** Per-path promise chain so rapid events for one file reindex in order. */
+  private queues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly vault: Vault,
@@ -29,17 +31,31 @@ export class VaultWatcher {
     });
     const handleUpsert = (abs: string) => {
       if (!abs.endsWith('.md')) return;
-      void this.reindexOne(abs);
+      this.enqueue(abs, () => this.reindexOne(abs));
     };
     this.watcher
       .on('add', handleUpsert)
       .on('change', handleUpsert)
       .on('unlink', (abs) => {
         if (!abs.endsWith('.md')) return;
-        const relPath = this.vault.rel(abs);
-        this.indexer.removeByPath(relPath);
-        this.onChange?.({ type: 'remove', relPath });
+        this.enqueue(abs, async () => {
+          const relPath = this.vault.rel(abs);
+          this.indexer.removeByPath(relPath);
+          this.onChange?.({ type: 'remove', relPath });
+        });
       });
+  }
+
+  /**
+   * Run `task` after any previously queued task for the same path, so a stale
+   * read can never land after a newer one and leave the index out of sync.
+   */
+  private enqueue(abs: string, task: () => Promise<void>): void {
+    const prev = this.queues.get(abs) ?? Promise.resolve();
+    const next = prev.then(task, task).finally(() => {
+      if (this.queues.get(abs) === next) this.queues.delete(abs);
+    });
+    this.queues.set(abs, next);
   }
 
   private async reindexOne(abs: string): Promise<void> {
