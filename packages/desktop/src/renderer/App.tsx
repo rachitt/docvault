@@ -10,6 +10,7 @@ import { useStore } from './store';
 export default function App(): React.JSX.Element {
   const refresh = useStore((s) => s.refresh);
   const setPalette = useStore((s) => s.setPalette);
+  const applyTheme = useStore((s) => s.applyTheme);
   const loading = useStore((s) => s.loading);
   const error = useStore((s) => s.error);
 
@@ -23,11 +24,17 @@ export default function App(): React.JSX.Element {
       }
     };
     window.addEventListener('keydown', onKey);
+    // Re-resolve when the OS appearance changes (only matters in 'system' mode).
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => applyTheme();
+    mql.addEventListener('change', onScheme);
+    applyTheme();
     return () => {
       off();
       window.removeEventListener('keydown', onKey);
+      mql.removeEventListener('change', onScheme);
     };
-  }, [refresh, setPalette]);
+  }, [refresh, setPalette, applyTheme]);
 
   return (
     <div className="flex h-full w-full flex-col bg-white">

@@ -66,6 +66,9 @@ export interface Product {
   docCount: number;
 }
 
+/** UI color theme. 'system' follows the OS appearance. */
+export type ThemeMode = 'light' | 'dark' | 'system';
+
 /** App-level state that is not doc content (lives in .docvault/config.json). */
 export interface VaultConfig {
   workspaceName: string;
@@ -75,6 +78,8 @@ export interface VaultConfig {
   aiBackend: 'claude' | 'codex';
   /** Stream the assistant's output token-by-token. Off by default. */
   aiStreaming: boolean;
+  /** UI color theme; 'system' tracks the OS appearance. */
+  theme: ThemeMode;
 }
 
 export const DEFAULT_CONFIG: VaultConfig = {
@@ -84,4 +89,5 @@ export const DEFAULT_CONFIG: VaultConfig = {
   trash: [],
   aiBackend: 'claude',
   aiStreaming: false,
+  theme: 'system',
 };

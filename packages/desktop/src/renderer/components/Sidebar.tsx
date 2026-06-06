@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   Trash2,
   Boxes,
+  Settings,
 } from 'lucide-react';
 import { useStore, type NavView } from '../store';
 import type { DocMeta } from '@docvault/core';
@@ -111,9 +112,18 @@ export function Sidebar(): React.JSX.Element {
 
       <button
         onClick={() => void importFile()}
-        className="m-2 flex items-center justify-center gap-2 rounded-md border border-[var(--dv-border)] bg-white py-1.5 text-neutral-600 hover:bg-neutral-50"
+        className="mx-2 mt-2 flex items-center justify-center gap-2 rounded-md border border-[var(--dv-border)] bg-white py-1.5 text-neutral-600 hover:bg-neutral-50"
       >
         <Import size={15} /> Import PDF / DOCX / TXT
+      </button>
+
+      <button
+        onClick={() => setView('settings')}
+        className={`m-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-neutral-600 hover:bg-neutral-200/60 ${
+          view === 'settings' ? 'bg-neutral-200/80 font-medium text-neutral-900' : ''
+        }`}
+      >
+        <Settings size={16} /> Settings
       </button>
     </aside>
   );

@@ -14,6 +14,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const saveCurrent = useStore((s) => s.saveCurrent);
   const toggleStar = useStore((s) => s.toggleStar);
   const config = useStore((s) => s.config);
+  const resolvedTheme = useStore((s) => s.resolvedTheme);
   const editor = useCreateBlockNote();
   const [ready, setReady] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,7 +74,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           </span>
         ))}
       </div>
-      <BlockNoteView editor={editor} onChange={onChange} theme="light" className="bn-container" />
+      <BlockNoteView editor={editor} onChange={onChange} theme={resolvedTheme} className="bn-container" />
     </div>
   );
 }
