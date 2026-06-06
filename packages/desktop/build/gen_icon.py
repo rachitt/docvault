@@ -61,10 +61,10 @@ def over(src_rgb, src_a2d):
     alpha = out_a
 
 
-# --- Background squircle: diagonal indigo -> violet gradient + top highlight ---
+# --- Background squircle: diagonal deep-orange -> amber gradient + top highlight ---
 t = np.clip((x + y) / (2.0 * N), 0, 1)
-c0 = np.array([67, 56, 202])    # indigo-700  #4338ca
-c1 = np.array([147, 97, 253])   # violet      #9361fd
+c0 = np.array([194, 65, 12])    # orange-700  #c2410c
+c1 = np.array([251, 146, 60])   # orange-400  #fb923c
 bg = c0 * (1 - t[..., None]) + c1 * t[..., None]
 glow = np.exp(-(((x - 340) ** 2 + (y - 300) ** 2) / (2 * 430 ** 2)))
 bg = np.clip(bg + glow[..., None] * 42, 0, 255)
