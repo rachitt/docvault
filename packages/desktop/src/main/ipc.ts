@@ -24,10 +24,20 @@ function resolveMcpServer(): string {
  * here directly; external file edits are surfaced via a lightweight watcher.
  */
 export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise<() => void> {
+  // The MCP server loads a native SQLite module compiled for the system Node
+  // ABI, so it must run under a real `node` — never under Electron's runtime
+  // (whose ABI differs). `process.execPath` is only a usable node when we are
+  // NOT inside Electron; under Electron it is the Electron binary (and its path
+  // contains "node_modules", which is why a substring check is unsafe). So
+  // reuse execPath only outside Electron, otherwise resolve node from PATH.
+  // Also drop ELECTRON_RUN_AS_NODE so a `node` that happens to be Electron does
+  // not inherit Electron's ABI.
+  const nodeBin = resolveBin('node', [process.versions.electron ? '' : process.execPath]);
+  const { ELECTRON_RUN_AS_NODE: _drop, ...childEnv } = enhancedEnv();
   const transport = new StdioClientTransport({
-    command: resolveBin('node', [process.execPath.includes('node') ? process.execPath : '']),
+    command: nodeBin,
     args: [resolveMcpServer(), '--vault', vaultDir],
-    env: enhancedEnv() as Record<string, string>,
+    env: childEnv as Record<string, string>,
   });
   const client = new Client({ name: 'docvault-desktop', version: '0.1.0' });
   await client.connect(transport);
