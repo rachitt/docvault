@@ -1,5 +1,6 @@
 import chokidar, { type FSWatcher } from 'chokidar';
 import { parseDoc } from './doc.js';
+import { isImportable, reextract } from './import/index.js';
 import type { Indexer } from './indexer.js';
 import type { Vault } from './vault.js';
 import { readFile } from 'node:fs/promises';
@@ -30,8 +31,13 @@ export class VaultWatcher {
       awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
     });
     const handleUpsert = (abs: string) => {
-      if (!abs.endsWith('.md')) return;
-      this.enqueue(abs, () => this.reindexOne(abs));
+      if (abs.endsWith('.md')) {
+        this.enqueue(abs, () => this.reindexOne(abs));
+      } else if (isImportable(abs)) {
+        // An imported original (pdf/docx/txt) changed on disk: regenerate its
+        // markdown sidecar so search + agents see the new content.
+        this.enqueue(abs, () => this.reextractOne(abs));
+      }
     };
     this.watcher
       .on('add', handleUpsert)
@@ -66,6 +72,18 @@ export class VaultWatcher {
       this.onChange?.({ type: 'upsert', relPath: doc.relPath });
     } catch {
       /* file vanished or unreadable mid-event; ignore */
+    }
+  }
+
+  private async reextractOne(abs: string): Promise<void> {
+    try {
+      const doc = await reextract(this.vault, abs);
+      if (doc) {
+        this.indexer.upsert(doc);
+        this.onChange?.({ type: 'upsert', relPath: doc.relPath });
+      }
+    } catch {
+      /* unreadable / unsupported mid-event; ignore */
     }
   }
 

@@ -14,6 +14,7 @@ const api: DocVaultApi = {
   listTags: () => ipcRenderer.invoke(CH.listTags),
   importFile: () => ipcRenderer.invoke(CH.importFile),
   openOriginal: (relPath) => ipcRenderer.invoke(CH.openOriginal, relPath),
+  readSource: (relPath) => ipcRenderer.invoke(CH.readSource, relPath),
   getConfig: () => ipcRenderer.invoke(CH.getConfig),
   updateConfig: (patch) => ipcRenderer.invoke(CH.updateConfig, patch),
   toggleStar: (id) => ipcRenderer.invoke(CH.toggleStar, id),

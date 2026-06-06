@@ -153,6 +153,23 @@ describe('DocVault core', () => {
     expect(dv.search({ query: 'kangaroo' })).toHaveLength(1);
     expect(dv.search({ query: 'before' })).toHaveLength(0);
   });
+
+  it('re-extracts an imported original when its bytes change on disk (watcher)', async () => {
+    const src = path.join(root, 'note.txt');
+    await writeFile(src, 'original alpha content', 'utf8');
+    const imported = await dv.importFile(src);
+    expect(dv.search({ query: 'alpha' })).toHaveLength(1);
+
+    const originalAbs = path.join(root, imported.frontmatter.source!);
+    dv.startWatching();
+    await writeFile(originalAbs, 'updated zebra content', 'utf8');
+
+    await waitFor(() => dv.search({ query: 'zebra' }).length === 1);
+    expect(dv.search({ query: 'alpha' })).toHaveLength(0);
+    // The sidecar keeps its identity; only its content is refreshed.
+    const reread = await dv.readDoc(imported.frontmatter.id);
+    expect(reread.content).toContain('zebra');
+  });
 });
 
 /** Poll until `cond` is true or the timeout elapses. */
