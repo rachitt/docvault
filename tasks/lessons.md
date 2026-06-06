@@ -30,5 +30,11 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
 - **Rebuild /Applications after every large change**: the running app is the `/Applications`
   copy, which does NOT auto-update from dev builds. This is now one command — `pnpm reinstall`
   (`packages/desktop/scripts/reinstall.sh`): build → package unsigned `.app` → quit the running
-  copy → `ditto` to `/Applications/DocVault.app` → relaunch. Flags: `--no-launch`, `--no-build`.
+  copy → `ditto` to `/Applications/DocVault.app` → relaunch. Flags: `--no-launch`, `--no-build`,
+  `--no-quit` (refresh the bundle in place without killing a running instance).
   Don't hand-run the old build → package → ditto sequence anymore.
+- **/Applications auto-refreshes on commit**: git `post-commit` + `post-merge` hooks
+  (`.githooks/`, activated via `core.hooksPath`; run `pnpm setup:hooks` after a fresh clone) run
+  `pnpm reinstall --no-launch --no-quit` in the background, so the canonical installed app tracks
+  committed code. It's lock-debounced; logs to `/tmp/docvault-reinstall.log`. A running app is
+  refreshed in place — restart DocVault to see the change.
