@@ -152,17 +152,18 @@ body {
 }
 
 /* --- Mermaid custom block --------------------------------------------- */
+/* BlockNote wraps every block's content in `display:flex; width:100%`, which makes
+   the diagram a flex item that shrinks to the narrow prose column. Opt the mermaid
+   block out of flex so .dv-mermaid sizes by its own rules below. Without this the
+   diagram renders tiny regardless of any width we set. */
+.bn-block-content[data-content-type='mermaid'] {
+  display: block;
+}
 .dv-mermaid {
   margin: 0.5rem 0;
   border: 1px solid var(--dv-border);
   border-radius: 0.5rem;
   overflow: hidden;
-  /* The editor's prose column is narrow (~672px). Let diagram blocks break out
-     wider than the text — up to 900px, centered — so dense diagrams are legible.
-     The calc keeps the breakout bounded so it stays within the editor pane. */
-  width: min(900px, calc(100% + 8rem));
-  margin-left: 50%;
-  transform: translateX(-50%);
 }
 .dv-mermaid-toolbar {
   display: flex;
@@ -209,13 +210,13 @@ body {
   background: var(--dv-bg);
 }
 .dv-mermaid-svg {
-  /* Cap the diagram area at 900px and center it. A flex container here used to
-     collapse Mermaid's `width="100%"` SVG to a tiny intrinsic size — hence the
-     "too small" rendering. Capping the *container* (not the svg's max-width) lets
-     Mermaid fill up to 900px while small diagrams keep their natural size. */
+  /* Cap the diagram area at a comfortable medium width and center it. Mermaid's
+     `width="100%"` SVG fills this box up to the cap; smaller diagrams keep their
+     natural size. (Requires the display:block opt-out on the block content above,
+     otherwise BlockNote's flex wrapper shrinks it to a sliver.) */
   padding: 1rem;
   background: var(--dv-bg);
-  max-width: 900px;
+  max-width: 600px;
   margin-left: auto;
   margin-right: auto;
 }
