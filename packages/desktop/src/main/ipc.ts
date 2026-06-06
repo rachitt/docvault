@@ -36,8 +36,12 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   const call = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => {
     const res = (await client.callTool({ name, arguments: args })) as {
       content: { type: string; text: string }[];
+      isError?: boolean;
     };
     const text = res.content?.[0]?.text ?? 'null';
+    // Tool errors come back as a result with isError + a plain-text message
+    // (not JSON), so surface the real message instead of a JSON parse error.
+    if (res.isError) throw new Error(text);
     return JSON.parse(text) as T;
   };
 

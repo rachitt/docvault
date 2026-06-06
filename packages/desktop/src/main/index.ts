@@ -38,8 +38,9 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
-    const allowed = process.env.ELECTRON_RENDERER_URL;
-    if (url !== allowed && !url.startsWith('file://')) e.preventDefault();
+    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const isDev = devUrl ? url.startsWith(devUrl) : false;
+    if (!isDev && !url.startsWith('file://')) e.preventDefault();
   });
 
   cleanup = await registerIpc(win, resolveVaultDir());
