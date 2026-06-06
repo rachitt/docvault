@@ -18,6 +18,7 @@ const LIGHT_VARS = {
   primaryColor: '#ede9fe',
   primaryBorderColor: '#7c3aed',
   primaryTextColor: '#312e81',
+  nodeTextColor: '#312e81',
   lineColor: '#8b5cf6',
   secondaryColor: '#f5f3ff',
   tertiaryColor: '#faf5ff',
@@ -43,6 +44,7 @@ const DARK_VARS = {
   primaryColor: '#3b2f63',
   primaryBorderColor: '#a78bfa',
   primaryTextColor: '#ede9fe',
+  nodeTextColor: '#ede9fe',
   lineColor: '#a78bfa',
   secondaryColor: '#2a2440',
   tertiaryColor: '#241f38',
@@ -70,6 +72,12 @@ function ensureInit(): void {
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'base',
+    // Render labels as SVG <text>, not HTML in <foreignObject>. We sanitize the
+    // SVG with DOMPurify's svg-only profile before injecting it, which strips
+    // foreignObject HTML — so html labels would render as empty (invisible) text.
+    // SVG text survives the sanitizer and keeps the security posture intact.
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
     themeVariables: mode === 'dark' ? DARK_VARS : LIGHT_VARS,
   });
   initializedTheme = mode;

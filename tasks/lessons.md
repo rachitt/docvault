@@ -15,6 +15,12 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
   changes every rebuild → "DocVault wants to use your confidential information…" re-prompts each
   start. Fix: sign every build with one fixed self-signed cert. `pnpm --filter @docvault/desktop
   dev-cert` creates it once; `reinstall.sh` then signs SRC with "DocVault Dev" automatically.
+- **Flowchart labels invisible = DOMPurify strips foreignObject**: Mermaid renders flowchart/class
+  node labels as HTML inside `<foreignObject>`, but `Mermaid.tsx` sanitizes with DOMPurify's
+  svg-only profile (`USE_PROFILES:{svg,svgFilters}`), which drops that HTML → shapes render, text
+  vanishes. Sequence diagrams use SVG `<text>` so they're unaffected. Fix: `mermaid.initialize({
+  htmlLabels:false, flowchart:{htmlLabels:false} })` so labels are SVG text that survives the
+  sanitizer — keeps the strict profile (no security loosening). Verify flowcharts, not just sequence.
 - **Mermaid renders tiny inside BlockNote** because `.bn-block-content` is `display:flex;width:100%`,
   which shrinks the SVG to a sliver. Opt the block out: `.bn-block-content[data-content-type='mermaid']
   { display:block }`, then size via `.dv-mermaid-svg { max-width:…; margin:0 auto }`. A standalone
