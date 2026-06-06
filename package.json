@@ -10,6 +10,7 @@
     "core:test": "pnpm --filter @docvault/core test",
     "mcp:build": "pnpm --filter @docvault/mcp-server build",
     "desktop:dev": "pnpm --filter @docvault/desktop dev",
+    "reinstall": "pnpm --filter @docvault/desktop reinstall",
     "typecheck": "pnpm --filter @docvault/core --filter @docvault/mcp-server exec tsc --noEmit"
   },
   "engines": {

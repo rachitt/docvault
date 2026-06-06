@@ -17,7 +17,26 @@ files:
 mac:
   icon: build/icon.icns
   category: public.app-category.productivity
+  # Unsigned for local `dir` builds. For a distributable, signed dmg + working
+  # auto-update, set identity to your Developer ID and notarize (see README).
   identity: null
   target:
     - target: dir
       arch: arm64
+dmg:
+  # Standard drag-to-Applications layout for the distributable.
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+# Versioned GitHub releases. `pnpm --filter @docvault/desktop release` builds a
+# dmg and publishes it here, emitting latest-mac.yml so electron-updater clients
+# (see src/main/updater.ts) can find new versions. Functional macOS auto-update
+# additionally requires a signed + notarized build.
+publish:
+  provider: github
+  owner: rachitt
+  repo: docvault
