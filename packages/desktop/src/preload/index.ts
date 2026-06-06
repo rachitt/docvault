@@ -33,7 +33,7 @@ const api: DocVaultApi = {
     },
   },
   onVaultChanged: (cb) => {
-    const fn = () => cb();
+    const fn = (_e: unknown, paths: string[] = []) => cb(paths);
     ipcRenderer.on(EV.vaultChanged, fn);
     return () => ipcRenderer.removeListener(EV.vaultChanged, fn);
   },

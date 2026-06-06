@@ -68,5 +68,6 @@ export interface DocVaultApi {
     onChunk(cb: (requestId: string, text: string) => void): () => void;
     onDone(cb: (requestId: string, error?: string) => void): () => void;
   };
-  onVaultChanged(cb: () => void): () => void;
+  /** Fired when files under docs/ change on disk; `paths` are vault-relative. */
+  onVaultChanged(cb: (paths: string[]) => void): () => void;
 }

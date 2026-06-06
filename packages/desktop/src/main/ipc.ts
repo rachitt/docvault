@@ -110,15 +110,22 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   ipcMain.handle(CH.aiCancel, (_e, requestId: string) => ai.cancel(requestId));
 
   // --- Surface external edits (e.g. an agent writing files) to the UI ---
+  // Carry the set of changed vault-relative paths so the renderer can tell
+  // whether the *open* doc changed and reconcile it instead of clobbering.
   let debounce: ReturnType<typeof setTimeout> | null = null;
+  const changed = new Set<string>();
+  const root = path.resolve(vaultDir);
   const watcher = chokidar.watch(path.join(vaultDir, 'docs'), {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   });
-  watcher.on('all', () => {
+  watcher.on('all', (_event, changedPath) => {
+    if (changedPath) changed.add(path.relative(root, changedPath));
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged);
+      const paths = [...changed];
+      changed.clear();
+      if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged, paths);
     }, 350);
   });
 
