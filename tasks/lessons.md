@@ -28,6 +28,7 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
   "prompt() is and will not be supported"), so `if (value)` guards never fire — buttons look dead.
   Collect input via an in-app inline `<input>`/modal instead (`Sidebar.tsx` InlineInput).
 - **Rebuild /Applications after every large change**: the running app is the `/Applications`
-  copy, which does NOT auto-update from dev builds. After any substantial change, repackage and
-  reinstall before testing/marking done: `pnpm --filter @docvault/desktop build` → package →
-  `ditto dist-app/mac-arm64/DocVault.app /Applications/DocVault.app`.
+  copy, which does NOT auto-update from dev builds. This is now one command — `pnpm reinstall`
+  (`packages/desktop/scripts/reinstall.sh`): build → package unsigned `.app` → quit the running
+  copy → `ditto` to `/Applications/DocVault.app` → relaunch. Flags: `--no-launch`, `--no-build`.
+  Don't hand-run the old build → package → ditto sequence anymore.

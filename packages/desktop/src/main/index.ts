@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpc } from './ipc.js';
+import { checkForUpdates } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,7 +61,10 @@ async function createWindow(): Promise<void> {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+  void checkForUpdates();
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();
