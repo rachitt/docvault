@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep /Applications/DocVault.app current after every commit. See reinstall-bg.sh.
+. "$(dirname "$0")/reinstall-bg.sh"

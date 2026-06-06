@@ -11,6 +11,7 @@
     "mcp:build": "pnpm --filter @docvault/mcp-server build",
     "desktop:dev": "pnpm --filter @docvault/desktop dev",
     "reinstall": "pnpm --filter @docvault/desktop reinstall",
+    "setup:hooks": "git config core.hooksPath .githooks",
     "typecheck": "pnpm --filter @docvault/core --filter @docvault/mcp-server exec tsc --noEmit"
   },
   "engines": {
