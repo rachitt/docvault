@@ -83,7 +83,7 @@ export function AiAssistant(): React.JSX.Element {
               ))}
             </div>
             <p className="mt-3 px-1 text-[11px] text-neutral-400">
-              Powered by Claude Code running locally in your vault.
+              AI assistant is not connected to a backend yet.
             </p>
           </div>
         ) : (
