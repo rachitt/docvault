@@ -10,7 +10,9 @@ import { useStore } from './store';
 export default function App(): React.JSX.Element {
   const refresh = useStore((s) => s.refresh);
   const setPalette = useStore((s) => s.setPalette);
+  const applyTheme = useStore((s) => s.applyTheme);
   const loading = useStore((s) => s.loading);
+  const error = useStore((s) => s.error);
 
   useEffect(() => {
     void refresh();
@@ -22,11 +24,17 @@ export default function App(): React.JSX.Element {
       }
     };
     window.addEventListener('keydown', onKey);
+    // Re-resolve when the OS appearance changes (only matters in 'system' mode).
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => applyTheme();
+    mql.addEventListener('change', onScheme);
+    applyTheme();
     return () => {
       off();
       window.removeEventListener('keydown', onKey);
+      mql.removeEventListener('change', onScheme);
     };
-  }, [refresh, setPalette]);
+  }, [refresh, setPalette, applyTheme]);
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -41,6 +49,11 @@ export default function App(): React.JSX.Element {
       {loading && (
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center text-sm text-neutral-400">
           Loading vault…
+        </div>
+      )}
+      {error && !loading && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow">
+          Failed to load vault: {error}
         </div>
       )}
     </div>

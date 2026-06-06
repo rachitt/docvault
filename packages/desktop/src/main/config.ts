@@ -9,6 +9,7 @@ const DEFAULTS: VaultConfig = {
   trash: [],
   aiBackend: 'claude',
   aiStreaming: false,
+  theme: 'system',
 };
 
 /**

@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DocVault } from './docvault.js';
+import { toFtsMatch } from './indexer.js';
 
 describe('DocVault core', () => {
   let root: string;
@@ -75,4 +76,90 @@ describe('DocVault core', () => {
     expect(sc?.title).toBe('SuperChat');
     expect(sc?.docCount).toBe(1);
   });
+
+  it('updates a doc body and reflects it in search', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Note', content: 'initial body' });
+    await dv.updateDoc(doc.relPath, { content: 'replaced with photosynthesis' });
+    expect(dv.search({ query: 'initial' })).toHaveLength(0);
+    expect(dv.search({ query: 'photosynthesis' })).toHaveLength(1);
+  });
+
+  it('soft-deletes a doc: removed from index, moved under trash/', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Temp', content: 'disposable' });
+    await dv.trashDoc(doc.relPath);
+    expect(dv.getMeta(doc.frontmatter.id)).toBeNull();
+    expect(dv.search({ query: 'disposable' })).toHaveLength(0);
+    const cfg = await dv.readConfig();
+    expect(cfg.trash).toContain(doc.relPath);
+  });
+
+  describe('path containment', () => {
+    it('rejects reading outside the vault via ..', async () => {
+      await writeFile(path.join(root, 'secret.txt'), 'top secret', 'utf8');
+      await expect(dv.readDoc('../secret.txt')).rejects.toThrow(/escapes vault/);
+    });
+
+    it('rejects creating a doc with a traversing product or stem', async () => {
+      await expect(
+        dv.createDoc({ product: '../../evil', title: 'x' }),
+      ).rejects.toThrow(/Invalid product/);
+      await expect(
+        dv.createDoc({ product: 'p', title: 'x', stem: '../escape' }),
+      ).rejects.toThrow(/Invalid stem/);
+    });
+
+    it('rejects creating a product with a traversing slug', async () => {
+      await expect(dv.createProduct('../evil', { title: 'x' })).rejects.toThrow(/Invalid/);
+    });
+  });
+
+  describe('FTS query safety', () => {
+    it('toFtsMatch quotes terms and drops operator-only input', () => {
+      expect(toFtsMatch('hello world')).toBe('"hello" "world"');
+      expect(toFtsMatch('  *(":-)  ')).toBeNull();
+      expect(toFtsMatch('')).toBeNull();
+    });
+
+    it('does not throw on FTS operator characters in a real search', async () => {
+      await dv.createDoc({ product: 'p', title: 'Ops', content: 'alpha beta gamma' });
+      for (const q of ['"', 'alpha AND', 'beta*', '(', 'NEAR', '-gamma', '']) {
+        expect(() => dv.search({ query: q })).not.toThrow();
+      }
+      expect(dv.search({ query: 'alpha' })).toHaveLength(1);
+    });
+  });
+
+  it('applies product filter before the search limit', async () => {
+    for (let i = 0; i < 30; i++) {
+      await dv.createDoc({ product: 'noise', title: `noise ${i}`, content: 'rocket' });
+    }
+    await dv.createDoc({ product: 'target', title: 'needle', content: 'rocket' });
+    // With a default limit of 25, the single target doc would be lost if the
+    // filter were applied after LIMIT. It must still be found.
+    const hits = dv.search({ query: 'rocket', product: 'target' });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.product).toBe('target');
+  });
+
+  it('reindexes a doc edited externally on disk (watcher)', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Watched', content: 'before edit' });
+    const changes: string[] = [];
+    dv.startWatching((c) => changes.push(c.type));
+    const abs = path.join(root, doc.relPath);
+    const raw = await readFile(abs, 'utf8');
+    await writeFile(abs, raw.replace('before edit', 'after kangaroo edit'), 'utf8');
+
+    await waitFor(() => dv.search({ query: 'kangaroo' }).length === 1);
+    expect(dv.search({ query: 'kangaroo' })).toHaveLength(1);
+    expect(dv.search({ query: 'before' })).toHaveLength(0);
+  });
 });
+
+/** Poll until `cond` is true or the timeout elapses. */
+async function waitFor(cond: () => boolean, timeoutMs = 3000): Promise<void> {
+  const start = Date.now();
+  while (!cond()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}

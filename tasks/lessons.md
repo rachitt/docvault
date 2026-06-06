@@ -19,3 +19,15 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
   folded corner + keyhole. Regenerate via `pnpm --filter @docvault/desktop icon` then rebuild .icns.
 - **packaging**: `asar: false` so the sidecar JS + better_sqlite3.node are plain files node can
   read/dlopen. Install = `ditto dist-app/mac-arm64/DocVault.app /Applications/DocVault.app`.
+- **Helm `mc` honors `$MC_BRIDGE`**: the `mc` bridge resolves `MC_BRIDGE || __dirname`, so when
+  Helm launches a terminal it exports `MC_BRIDGE` to *that* workspace's bridge. Running `mc add`
+  (even `./.mission-control/mc`) from docvault then writes to the wrong board. Check `echo
+  $MC_BRIDGE` first; set it explicitly to target a workspace. `mc` has no delete op (only
+  add/status/note) — wrong tasks come off the board via the app UI or the SQLite DB.
+- **No `window.prompt()`/`confirm()` in Electron**: they silently return `null` (logs
+  "prompt() is and will not be supported"), so `if (value)` guards never fire — buttons look dead.
+  Collect input via an in-app inline `<input>`/modal instead (`Sidebar.tsx` InlineInput).
+- **Rebuild /Applications after every large change**: the running app is the `/Applications`
+  copy, which does NOT auto-update from dev builds. After any substantial change, repackage and
+  reinstall before testing/marking done: `pnpm --filter @docvault/desktop build` → package →
+  `ditto dist-app/mac-arm64/DocVault.app /Applications/DocVault.app`.

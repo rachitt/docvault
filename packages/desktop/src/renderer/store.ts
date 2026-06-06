@@ -1,8 +1,25 @@
 import { create } from 'zustand';
-import type { Doc, DocMeta, Product, SearchHit, VaultConfig } from '@docvault/core';
+import type { Doc, DocMeta, Product, SearchHit, ThemeMode, VaultConfig } from '@docvault/core';
 
-export type NavView = 'home' | 'recent' | 'starred' | 'templates' | 'trash' | 'doc';
-export type RightTab = 'outline' | 'ai';
+export type NavView =
+  | 'home'
+  | 'recent'
+  | 'starred'
+  | 'templates'
+  | 'trash'
+  | 'settings'
+  | 'tags'
+  | 'search'
+  | 'doc';
+export type RightTab = 'outline' | 'links' | 'ai';
+
+/** Resolve the effective light/dark theme, expanding 'system' via the OS. */
+function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return mode;
+}
 
 interface State {
   products: Product[];
@@ -13,6 +30,13 @@ interface State {
   rightTab: RightTab;
   paletteOpen: boolean;
   loading: boolean;
+  error: string | null;
+  /** Effective theme after resolving 'system'; drives the `.dark` class. */
+  resolvedTheme: 'light' | 'dark';
+  /** Selected tag in the Tags browser, or null to show the tag list. */
+  tagFilter: string | null;
+  /** Query backing the full-page search results view. */
+  searchQuery: string;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -21,10 +45,21 @@ interface State {
   newProduct: (title: string) => Promise<void>;
   importFile: () => Promise<void>;
   toggleStar: (docId: string) => Promise<void>;
+  updateConfig: (patch: Partial<VaultConfig>) => Promise<void>;
+  setTheme: (mode: ThemeMode) => Promise<void>;
+  /** Re-resolve the current theme mode and apply the `.dark` class. */
+  applyTheme: () => void;
   setView: (v: NavView) => void;
   setRightTab: (t: RightTab) => void;
   setPalette: (open: boolean) => void;
   search: (q: string) => Promise<SearchHit[]>;
+  /** Open the Tags browser, optionally pre-selecting a tag. */
+  openTags: (tag?: string | null) => void;
+  setTagFilter: (tag: string | null) => void;
+  /** Open the full-page search results view seeded with a query. */
+  openSearch: (q: string) => void;
+  backlinks: (id: string) => Promise<DocMeta[]>;
+  listTags: () => Promise<{ tag: string; count: number }[]>;
 }
 
 const api = () => window.docvault;
@@ -47,14 +82,23 @@ export const useStore = create<State>((set, get) => ({
   rightTab: 'outline',
   paletteOpen: false,
   loading: true,
+  error: null,
+  resolvedTheme: 'light',
+  tagFilter: null,
+  searchQuery: '',
 
   refresh: async () => {
-    const [products, docs, config] = await Promise.all([
-      api().listProducts(),
-      api().listDocs(),
-      api().getConfig(),
-    ]);
-    set({ products, docs, config, loading: false });
+    try {
+      const [products, docs, config] = await Promise.all([
+        api().listProducts(),
+        api().listDocs(),
+        api().getConfig(),
+      ]);
+      set({ products, docs, config, loading: false, error: null });
+      get().applyTheme();
+    } catch (e) {
+      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   openDoc: async (idOrPath) => {
@@ -95,8 +139,28 @@ export const useStore = create<State>((set, get) => ({
     set({ config: await api().toggleStar(docId) });
   },
 
+  updateConfig: async (patch) => {
+    set({ config: await api().updateConfig(patch) });
+  },
+
+  setTheme: async (mode) => {
+    set({ config: await api().updateConfig({ theme: mode }) });
+    get().applyTheme();
+  },
+
+  applyTheme: () => {
+    const resolved = resolveTheme(get().config?.theme ?? 'system');
+    document.documentElement.classList.toggle('dark', resolved === 'dark');
+    if (get().resolvedTheme !== resolved) set({ resolvedTheme: resolved });
+  },
+
   setView: (v) => set({ view: v }),
   setRightTab: (t) => set({ rightTab: t }),
   setPalette: (open) => set({ paletteOpen: open }),
   search: (q) => api().search({ query: q, limit: 30 }),
+  openTags: (tag = null) => set({ view: 'tags', tagFilter: tag }),
+  setTagFilter: (tag) => set({ tagFilter: tag }),
+  openSearch: (q) => set({ view: 'search', searchQuery: q, paletteOpen: false }),
+  backlinks: (id) => api().backlinks(id),
+  listTags: () => api().listTags(),
 }));

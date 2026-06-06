@@ -4,7 +4,8 @@ import type { DocMeta } from '@docvault/core';
 import { useStore, type NavView } from '../store';
 
 export function ListView({ view }: { view: NavView }): React.JSX.Element {
-  const { docs, config } = useStore();
+  const docs = useStore((s) => s.docs);
+  const config = useStore((s) => s.config);
   const openDoc = useStore((s) => s.openDoc);
 
   const items = useMemo<DocMeta[]>(() => {
@@ -31,6 +32,9 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
     starred: 'Starred',
     templates: 'Templates',
     trash: 'Trash',
+    settings: 'Settings',
+    tags: 'Tags',
+    search: 'Search',
     doc: 'Document',
   };
 

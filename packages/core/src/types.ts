@@ -1,6 +1,7 @@
 /** Shared types for the DocVault core library. */
 
-export type DocStatus = 'draft' | 'published' | 'archived';
+export const DOC_STATUSES = ['draft', 'published', 'archived'] as const;
+export type DocStatus = (typeof DOC_STATUSES)[number];
 
 /** YAML frontmatter stored at the top of every managed markdown doc. */
 export interface DocFrontmatter {
@@ -65,6 +66,9 @@ export interface Product {
   docCount: number;
 }
 
+/** UI color theme. 'system' follows the OS appearance. */
+export type ThemeMode = 'light' | 'dark' | 'system';
+
 /** App-level state that is not doc content (lives in .docvault/config.json). */
 export interface VaultConfig {
   workspaceName: string;
@@ -74,6 +78,8 @@ export interface VaultConfig {
   aiBackend: 'claude' | 'codex';
   /** Stream the assistant's output token-by-token. Off by default. */
   aiStreaming: boolean;
+  /** UI color theme; 'system' tracks the OS appearance. */
+  theme: ThemeMode;
 }
 
 export const DEFAULT_CONFIG: VaultConfig = {
@@ -83,4 +89,5 @@ export const DEFAULT_CONFIG: VaultConfig = {
   trash: [],
   aiBackend: 'claude',
   aiStreaming: false,
+  theme: 'system',
 };

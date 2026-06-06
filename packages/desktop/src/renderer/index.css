@@ -10,6 +10,55 @@
   --dv-accent: #2563eb;
 }
 
+/*
+ * Dark theme. Applied by toggling `.dark` on <html>.
+ *
+ * Rather than annotate every component with `dark:` variants, we remap the
+ * design tokens the whole app already resolves through. Tailwind v4 emits
+ * utilities as `var(--color-*)`, and its theme lives in `@layer theme`; these
+ * unlayered rules therefore win automatically. Inverting the neutral scale
+ * flips text + surfaces in one place. `--color-white` is intentionally left
+ * white (it's only used as `text-white` on the accent), so `bg-white`
+ * surfaces are darkened explicitly below.
+ */
+.dark {
+  --dv-bg: #1b1b1d;
+  --dv-sidebar: #161618;
+  --dv-border: #2c2c2f;
+  --dv-text: #e4e4e2;
+  --dv-muted: #8b8b88;
+  --dv-accent: #3b82f6;
+
+  /* Inverted neutral ramp: dark surfaces, light text. */
+  --color-neutral-50: #1b1b1d;
+  --color-neutral-100: #232325;
+  --color-neutral-200: #2c2c2f;
+  --color-neutral-300: #3a3a3d;
+  --color-neutral-400: #76767a;
+  --color-neutral-500: #9a9a9d;
+  --color-neutral-600: #b6b6b4;
+  --color-neutral-700: #cececc;
+  --color-neutral-800: #e2e2e0;
+  --color-neutral-900: #f4f4f2;
+
+  /* Soft accent surfaces used for selected / error states. */
+  --color-blue-50: #1c2740;
+  --color-red-50: #3a1d1d;
+  --color-red-500: #f87171;
+  --color-red-600: #f87171;
+
+  color-scheme: dark;
+}
+
+/*
+ * `bg-white` is the app's primary canvas + card surface and must darken, but
+ * `--color-white` stays white for `text-white` on the accent — so override the
+ * generated utility class directly (higher specificity than the base utility).
+ */
+.dark .bg-white {
+  background-color: #202022;
+}
+
 html,
 body,
 #root {

@@ -1,6 +1,6 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { DocStore, type CreateDocInput } from './doc.js';
+import { DocStore, assertSafeSegment, type CreateDocInput } from './doc.js';
 import { importFile } from './import/index.js';
 import { Indexer } from './indexer.js';
 import type {
@@ -118,7 +118,15 @@ export class DocVault {
   ): Promise<Partial<Pick<Product, 'title' | 'icon' | 'color' | 'order'>>> {
     try {
       const raw = await readFile(path.join(this.vault.docsDir, slug, 'product.json'), 'utf8');
-      return JSON.parse(raw);
+      const data = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof data !== 'object' || data === null) return {};
+      // Only accept fields of the expected type; ignore anything malformed.
+      return {
+        ...(typeof data.title === 'string' ? { title: data.title } : {}),
+        ...(typeof data.icon === 'string' ? { icon: data.icon } : {}),
+        ...(typeof data.color === 'string' ? { color: data.color } : {}),
+        ...(typeof data.order === 'number' ? { order: data.order } : {}),
+      };
     } catch {
       return {};
     }
@@ -130,6 +138,7 @@ export class DocVault {
     slug: string,
     meta: { title: string; icon?: string; color?: string; order?: number },
   ): Promise<Product> {
+    assertSafeSegment(slug, 'product slug');
     const dir = path.join(this.vault.docsDir, slug);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, 'product.json'), JSON.stringify(meta, null, 2), 'utf8');
@@ -155,7 +164,19 @@ export class DocVault {
     await this.docs.trash(relPath);
     this.index.removeByPath(relPath);
     const cfg = await this.vault.readConfig();
-    await this.vault.updateConfig({ trash: [...cfg.trash, relPath] });
+    const trash = cfg.trash.includes(relPath) ? cfg.trash : [...cfg.trash, relPath];
+    await this.vault.updateConfig({ trash });
+  }
+
+  /** Add an explicit outbound link from one doc to a target doc id. */
+  async linkDocs(fromPath: string, targetId: string): Promise<Doc> {
+    const doc = await this.docs.read(fromPath);
+    const links = new Set(doc.frontmatter.links ?? []);
+    links.add(targetId);
+    doc.frontmatter.links = [...links];
+    const saved = await this.docs.write(doc);
+    this.index.upsert(saved);
+    return saved;
   }
 
   async importFile(srcAbsPath: string, opts: { tags?: string[] } = {}): Promise<Doc> {
