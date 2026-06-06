@@ -1,8 +1,16 @@
 import { create } from 'zustand';
-import type { Doc, DocMeta, Product, SearchHit, VaultConfig } from '@docvault/core';
+import type { Doc, DocMeta, Product, SearchHit, ThemeMode, VaultConfig } from '@docvault/core';
 
-export type NavView = 'home' | 'recent' | 'starred' | 'templates' | 'trash' | 'doc';
+export type NavView = 'home' | 'recent' | 'starred' | 'templates' | 'trash' | 'settings' | 'doc';
 export type RightTab = 'outline' | 'ai';
+
+/** Resolve the effective light/dark theme, expanding 'system' via the OS. */
+function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return mode;
+}
 
 interface State {
   products: Product[];
@@ -14,6 +22,8 @@ interface State {
   paletteOpen: boolean;
   loading: boolean;
   error: string | null;
+  /** Effective theme after resolving 'system'; drives the `.dark` class. */
+  resolvedTheme: 'light' | 'dark';
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -22,6 +32,10 @@ interface State {
   newProduct: (title: string) => Promise<void>;
   importFile: () => Promise<void>;
   toggleStar: (docId: string) => Promise<void>;
+  updateConfig: (patch: Partial<VaultConfig>) => Promise<void>;
+  setTheme: (mode: ThemeMode) => Promise<void>;
+  /** Re-resolve the current theme mode and apply the `.dark` class. */
+  applyTheme: () => void;
   setView: (v: NavView) => void;
   setRightTab: (t: RightTab) => void;
   setPalette: (open: boolean) => void;
@@ -49,6 +63,7 @@ export const useStore = create<State>((set, get) => ({
   paletteOpen: false,
   loading: true,
   error: null,
+  resolvedTheme: 'light',
 
   refresh: async () => {
     try {
@@ -58,6 +73,7 @@ export const useStore = create<State>((set, get) => ({
         api().getConfig(),
       ]);
       set({ products, docs, config, loading: false, error: null });
+      get().applyTheme();
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -99,6 +115,21 @@ export const useStore = create<State>((set, get) => ({
 
   toggleStar: async (docId) => {
     set({ config: await api().toggleStar(docId) });
+  },
+
+  updateConfig: async (patch) => {
+    set({ config: await api().updateConfig(patch) });
+  },
+
+  setTheme: async (mode) => {
+    set({ config: await api().updateConfig({ theme: mode }) });
+    get().applyTheme();
+  },
+
+  applyTheme: () => {
+    const resolved = resolveTheme(get().config?.theme ?? 'system');
+    document.documentElement.classList.toggle('dark', resolved === 'dark');
+    if (get().resolvedTheme !== resolved) set({ resolvedTheme: resolved });
   },
 
   setView: (v) => set({ view: v }),
