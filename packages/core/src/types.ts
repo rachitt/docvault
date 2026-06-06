@@ -72,6 +72,8 @@ export interface VaultConfig {
   recent: string[]; // doc ids, most-recent first
   trash: string[]; // relative paths of soft-deleted docs
   aiBackend: 'claude' | 'codex';
+  /** Stream the assistant's output token-by-token. Off by default. */
+  aiStreaming: boolean;
 }
 
 export const DEFAULT_CONFIG: VaultConfig = {
@@ -80,4 +82,5 @@ export const DEFAULT_CONFIG: VaultConfig = {
   recent: [],
   trash: [],
   aiBackend: 'claude',
+  aiStreaming: false,
 };

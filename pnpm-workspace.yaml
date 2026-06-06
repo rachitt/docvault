@@ -1,6 +1,9 @@
 packages:
   - 'packages/*'
+# @electron/rebuild pulls @electron/node-gyp from a git URL.
+blockExoticSubdeps: false
 allowBuilds:
   better-sqlite3: true
   canvas: false
+  electron: true
   esbuild: true

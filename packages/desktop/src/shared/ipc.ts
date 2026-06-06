@@ -1,0 +1,72 @@
+import type {
+  CreateDocInput,
+  Doc,
+  DocMeta,
+  Product,
+  SearchHit,
+  SearchOptions,
+  VaultConfig,
+} from '@docvault/core';
+
+/** IPC channel names (request/response via ipcRenderer.invoke). */
+export const CH = {
+  listProducts: 'dv:listProducts',
+  createProduct: 'dv:createProduct',
+  listDocs: 'dv:listDocs',
+  readDoc: 'dv:readDoc',
+  createDoc: 'dv:createDoc',
+  updateDoc: 'dv:updateDoc',
+  trashDoc: 'dv:trashDoc',
+  search: 'dv:search',
+  backlinks: 'dv:backlinks',
+  listTags: 'dv:listTags',
+  importFile: 'dv:importFile',
+  openOriginal: 'dv:openOriginal',
+  getConfig: 'dv:getConfig',
+  updateConfig: 'dv:updateConfig',
+  toggleStar: 'dv:toggleStar',
+  pushRecent: 'dv:pushRecent',
+  aiAsk: 'dv:aiAsk',
+  aiCancel: 'dv:aiCancel',
+} as const;
+
+/** Event channels (main → renderer, via webContents.send). */
+export const EV = {
+  vaultChanged: 'dv:vaultChanged',
+  aiChunk: 'dv:aiChunk',
+  aiDone: 'dv:aiDone',
+} as const;
+
+export type UpdateDocPatch = {
+  content?: string;
+  title?: string;
+  tags?: string[];
+  status?: 'draft' | 'published' | 'archived';
+};
+
+/** The API surface exposed on `window.docvault` by the preload script. */
+export interface DocVaultApi {
+  listProducts(): Promise<Product[]>;
+  createProduct(slug: string, meta: { title: string; icon?: string; color?: string }): Promise<Product>;
+  listDocs(opts?: { product?: string; tag?: string }): Promise<DocMeta[]>;
+  readDoc(idOrPath: string): Promise<Doc>;
+  createDoc(input: CreateDocInput): Promise<Doc>;
+  updateDoc(relPath: string, patch: UpdateDocPatch): Promise<Doc>;
+  trashDoc(relPath: string): Promise<void>;
+  search(opts: SearchOptions): Promise<SearchHit[]>;
+  backlinks(id: string): Promise<DocMeta[]>;
+  listTags(): Promise<{ tag: string; count: number }[]>;
+  importFile(): Promise<Doc | null>;
+  openOriginal(relPath: string): Promise<void>;
+  getConfig(): Promise<VaultConfig>;
+  updateConfig(patch: Partial<VaultConfig>): Promise<VaultConfig>;
+  toggleStar(docId: string): Promise<VaultConfig>;
+  pushRecent(docId: string): Promise<VaultConfig>;
+  ai: {
+    ask(requestId: string, prompt: string): Promise<void>;
+    cancel(requestId: string): Promise<void>;
+    onChunk(cb: (requestId: string, text: string) => void): () => void;
+    onDone(cb: (requestId: string, error?: string) => void): () => void;
+  };
+  onVaultChanged(cb: () => void): () => void;
+}

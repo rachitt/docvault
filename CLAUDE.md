@@ -1,35 +1,43 @@
-# DocVault — project guide for agents
+### 1.About the application
+DocVault — a local-first, Notion-style documentation desktop app. Markdown files on disk are
+the **source of truth**; SQLite (FTS5) is a rebuildable index. The desktop app, an MCP server,
+and any agents all share one vault folder, kept in sync by a chokidar file watcher. PDFs/DOCX/TXT
+are imported as originals + auto-extracted `.md` sidecars. Native Claude Code / Codex access is
+via the MCP server; the in-app AI panel runs `claude -p` in the vault.
 
-Local-first documentation platform. Markdown files on disk are the **source of truth**;
-SQLite is a rebuildable index. Desktop app + MCP server + agents all share one vault.
+pnpm monorepo (TypeScript, ESM, `NodeNext` → import with `.js` extensions in core/mcp source):
+- `packages/core` (`@docvault/core`) — `DocVault` facade in `src/docvault.ts`; storage, FTS
+  index, backlinks, importers, watcher. No Electron/DOM.
+- `packages/mcp-server` — stdio MCP server wrapping core (12 tools). Logic lives in core.
+- `packages/desktop` — Electron + React + BlockNote, three-pane UI (ref:
+  `docs-assets/atlas-ui-reference.png`). Uses Bundler resolution (no `.js` in imports).
 
-## Monorepo (pnpm workspace)
-- `packages/core` — `@docvault/core`: vault layout, doc CRUD, SQLite FTS index, backlinks,
-  pdf/docx/txt importers, file watcher. No Electron, no DOM. The single API surface is the
-  `DocVault` facade (`src/docvault.ts`).
-- `packages/mcp-server` — `@docvault/mcp-server`: stdio MCP server wrapping `core`.
-- `packages/desktop` — Electron + React Notion-style app (in progress).
+Build: `pnpm --filter <pkg> build`. Test core: `pnpm --filter @docvault/core test`.
+Gotchas: FTS5 table stores content (not contentless) so `snippet()` works; mammoth uses
+`extractRawText`; Electron + better-sqlite3 needs `electron-rebuild`; native builds are
+allowlisted in `pnpm-workspace.yaml > allowBuilds`.
 
-## Commands
-- Install: `pnpm install` (native builds for better-sqlite3/esbuild are pre-approved in
-  `pnpm-workspace.yaml > allowBuilds`).
-- Build a package: `pnpm --filter @docvault/core build` (tsc → `dist/`).
-- Test core: `pnpm --filter @docvault/core test` (vitest).
-- Smoke-test MCP: build it, then JSON-RPC over stdio (newline-delimited).
+### 2.Subagent strategy and Self Improvement
+- Use subagents liberally to manage the main context window
+- AFTER any correction from the user and learning: update `tasks/lessons.md`. Make sure to keep the learnings brief and the length of the file below 300 lines.
+- Ruthlessly iterate on these lessons until failure rate drops.
+- Review these lessons at the start of each session.
 
-## Conventions
-- TypeScript, ESM (`"type": "module"`), `NodeNext` resolution → **import with `.js`
-  extensions** in source (e.g. `import { Vault } from './vault.js'`).
-- `strict` + `noUncheckedIndexedAccess` are on; respect them.
-- The index is derived: never treat `index.db` as authoritative. Any write goes through
-  the file first, then `index.upsert(...)`.
-- New MCP tools: register in `packages/mcp-server/src/index.ts` and back them with a
-  `DocVault` method in `core` — don't put business logic in the server.
+### Git operations
+- While committing, keep commit messages short and concise and dont use co-authored tags.
+- While executing tasks, try to work on multiple git worktrees to accelerate the dev process. 
+- Create worktrees for features which are independent to avoid merge conflicts. Merging worktrees should happen sequentially as well.
+- Use the staging branch to test all changes before merging into main. Merges into main only happen through this branch. 
+- Create a new branch while working on a new feature and always open PR's before merging
 
-## Gotchas
-- FTS5 table is a regular (content-storing) table so `snippet()` works — not contentless.
-- mammoth: use `extractRawText` (its `convertToMarkdown` isn't in the TS types).
-- Electron + better-sqlite3 will need `electron-rebuild` against Electron's ABI.
+### Security
+- Work like a senior software engineer while writing code and always prioritize on security.
+- auth on every endpoint, secrets via env vars not commits, input validation on WebSocket payloads, rate limits on the LLM/TTS proxies, PII handling for call recordings. 
+- Voice AI has specific security shapes (recording consent, audio storage encryption, prompt injection via transcribed speech)
 
-## Lessons log
-Append mistakes + fixes to `workflows/lessons.md` (read it at the start of each session).
+### Verification before done
+- Never mark a task complete without proving it works
+- Diff behaviour between main and your changes when relevant
+- Ask yourself : "Would a staff engineer approve this?"
+- When given a bug report : just fix it
+- For bugs, dont just scratch the surface. Dive into the root cause and start fixing from there.

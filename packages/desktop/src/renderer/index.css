@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+@import '@blocknote/mantine/style.css';
+
+:root {
+  --dv-bg: #ffffff;
+  --dv-sidebar: #f7f7f5;
+  --dv-border: #ebeae8;
+  --dv-text: #37352f;
+  --dv-muted: #9b9a97;
+  --dv-accent: #2563eb;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+  color: var(--dv-text);
+  background: var(--dv-bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Region the whole top bar can drag the window (macOS hiddenInset). */
+.dv-drag {
+  -webkit-app-region: drag;
+}
+.dv-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Tighten BlockNote to feel like a Notion page. */
+.bn-container {
+  font-size: 16px;
+}
