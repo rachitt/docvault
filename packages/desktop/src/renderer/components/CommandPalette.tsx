@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Search } from 'lucide-react';
+import { CornerDownLeft, FileText, Search } from 'lucide-react';
 import type { SearchHit } from '@docvault/core';
 import { useStore } from '../store';
+import { Snippet } from './Snippet';
+
+const DEBOUNCE_MS = 200;
 
 export function CommandPalette(): React.JSX.Element | null {
   const open = useStore((s) => s.paletteOpen);
   const setPalette = useStore((s) => s.setPalette);
   const search = useStore((s) => s.search);
   const openDoc = useStore((s) => s.openDoc);
+  const openSearch = useStore((s) => s.openSearch);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [active, setActive] = useState(0);
@@ -22,20 +26,25 @@ export function CommandPalette(): React.JSX.Element | null {
     }
   }, [open]);
 
+  // Debounced search: wait for a pause in typing before hitting the index, and
+  // ignore results that resolve after the query has moved on.
   useEffect(() => {
     if (!q.trim()) {
       setHits([]);
       return;
     }
     let cancelled = false;
-    void search(q).then((r) => {
-      if (!cancelled) {
-        setHits(r);
-        setActive(0);
-      }
-    });
+    const t = setTimeout(() => {
+      void search(q).then((r) => {
+        if (!cancelled) {
+          setHits(r);
+          setActive(0);
+        }
+      });
+    }, DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
   }, [q, search]);
 
@@ -46,13 +55,17 @@ export function CommandPalette(): React.JSX.Element | null {
     setPalette(false);
   };
 
+  const seeAll = (): void => {
+    if (q.trim()) openSearch(q.trim());
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 pt-[12vh]"
       onClick={() => setPalette(false)}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-[var(--dv-border)] bg-white shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-[var(--dv-border)] bg-white shadow-2xl dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-[var(--dv-border)] px-4 py-3">
@@ -65,10 +78,13 @@ export function CommandPalette(): React.JSX.Element | null {
               if (e.key === 'Escape') setPalette(false);
               if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, hits.length - 1));
               if (e.key === 'ArrowUp') setActive((a) => Math.max(a - 1, 0));
-              if (e.key === 'Enter' && hits[active]) choose(hits[active]);
+              if (e.key === 'Enter') {
+                if (e.shiftKey || !hits[active]) seeAll();
+                else choose(hits[active]);
+              }
             }}
             placeholder="Search all documents…"
-            className="flex-1 bg-transparent text-base outline-none"
+            className="flex-1 bg-transparent text-base text-neutral-800 outline-none dark:text-neutral-100"
           />
         </div>
         <div className="max-h-80 overflow-y-auto">
@@ -78,14 +94,16 @@ export function CommandPalette(): React.JSX.Element | null {
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(h)}
               className={`flex w-full items-start gap-3 px-4 py-2.5 text-left ${
-                i === active ? 'bg-neutral-100' : ''
+                i === active ? 'bg-neutral-100 dark:bg-neutral-800' : ''
               }`}
             >
               <FileText size={16} className="mt-0.5 shrink-0 text-neutral-400" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-neutral-800">{h.title}</span>
+                <span className="block truncate font-medium text-neutral-800 dark:text-neutral-100">
+                  {h.title}
+                </span>
                 <span className="block truncate text-xs text-neutral-400">
-                  {renderSnippet(h.snippet)}
+                  <Snippet text={h.snippet} />
                 </span>
               </span>
             </button>
@@ -94,12 +112,21 @@ export function CommandPalette(): React.JSX.Element | null {
             <p className="px-4 py-6 text-center text-sm text-neutral-400">No matches</p>
           )}
         </div>
+        {q.trim() && (
+          <button
+            onClick={seeAll}
+            className="flex w-full items-center gap-2 border-t border-[var(--dv-border)] px-4 py-2.5 text-left text-sm text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+          >
+            <Search size={14} />
+            <span className="flex-1">
+              See all results for “<span className="font-medium text-neutral-700 dark:text-neutral-200">{q.trim()}</span>”
+            </span>
+            <kbd className="flex items-center gap-0.5 rounded border border-[var(--dv-border)] px-1.5 py-0.5 text-[10px] text-neutral-400">
+              <CornerDownLeft size={10} /> shift
+            </kbd>
+          </button>
+        )}
       </div>
     </div>
   );
-}
-
-/** Strip the «» FTS markers for a plain-text snippet preview. */
-function renderSnippet(s: string): string {
-  return s.replace(/«|»/g, '');
 }

@@ -33,6 +33,8 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
     templates: 'Templates',
     trash: 'Trash',
     settings: 'Settings',
+    tags: 'Tags',
+    search: 'Search',
     doc: 'Document',
   };
 
