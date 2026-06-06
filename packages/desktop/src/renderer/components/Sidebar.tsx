@@ -12,6 +12,7 @@ import {
   Trash2,
   Boxes,
   Settings,
+  Tag,
 } from 'lucide-react';
 import { useStore, type NavView } from '../store';
 import type { DocMeta } from '@docvault/core';
@@ -20,6 +21,7 @@ const NAV: { key: NavView; label: string; icon: React.ComponentType<{ size?: num
   { key: 'home', label: 'Home', icon: Home },
   { key: 'recent', label: 'Recent', icon: Clock },
   { key: 'starred', label: 'Starred', icon: Star },
+  { key: 'tags', label: 'Tags', icon: Tag },
   { key: 'templates', label: 'Templates', icon: LayoutTemplate },
   { key: 'trash', label: 'Trash', icon: Trash2 },
 ];
@@ -31,6 +33,7 @@ export function Sidebar(): React.JSX.Element {
   const view = useStore((s) => s.view);
   const currentDoc = useStore((s) => s.currentDoc);
   const setView = useStore((s) => s.setView);
+  const openTags = useStore((s) => s.openTags);
   const openDoc = useStore((s) => s.openDoc);
   const newDoc = useStore((s) => s.newDoc);
   const newProduct = useStore((s) => s.newProduct);
@@ -62,7 +65,7 @@ export function Sidebar(): React.JSX.Element {
         {NAV.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setView(key)}
+            onClick={() => (key === 'tags' ? openTags(null) : setView(key))}
             className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-neutral-600 hover:bg-neutral-200/60 ${
               view === key ? 'bg-neutral-200/80 font-medium text-neutral-900' : ''
             }`}

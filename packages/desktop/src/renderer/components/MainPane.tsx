@@ -3,6 +3,8 @@ import { Editor } from './Editor';
 import { SourceViewer } from './SourceViewer';
 import { ListView } from './ListView';
 import { Settings } from './Settings';
+import { TagsView } from './TagsView';
+import { SearchResults } from './SearchResults';
 
 export function MainPane(): React.JSX.Element {
   const view = useStore((s) => s.view);
@@ -19,6 +21,10 @@ export function MainPane(): React.JSX.Element {
     body = <Empty label="Select a document" />;
   } else if (view === 'settings') {
     body = <Settings />;
+  } else if (view === 'tags') {
+    body = <TagsView />;
+  } else if (view === 'search') {
+    body = <SearchResults />;
   } else {
     body = <ListView view={view} />;
   }

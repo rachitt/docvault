@@ -1,8 +1,17 @@
 import { create } from 'zustand';
 import type { Doc, DocMeta, Product, SearchHit, ThemeMode, VaultConfig } from '@docvault/core';
 
-export type NavView = 'home' | 'recent' | 'starred' | 'templates' | 'trash' | 'settings' | 'doc';
-export type RightTab = 'outline' | 'ai';
+export type NavView =
+  | 'home'
+  | 'recent'
+  | 'starred'
+  | 'templates'
+  | 'trash'
+  | 'settings'
+  | 'tags'
+  | 'search'
+  | 'doc';
+export type RightTab = 'outline' | 'links' | 'ai';
 
 /** Resolve the effective light/dark theme, expanding 'system' via the OS. */
 function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
@@ -24,6 +33,10 @@ interface State {
   error: string | null;
   /** Effective theme after resolving 'system'; drives the `.dark` class. */
   resolvedTheme: 'light' | 'dark';
+  /** Selected tag in the Tags browser, or null to show the tag list. */
+  tagFilter: string | null;
+  /** Query backing the full-page search results view. */
+  searchQuery: string;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -40,6 +53,13 @@ interface State {
   setRightTab: (t: RightTab) => void;
   setPalette: (open: boolean) => void;
   search: (q: string) => Promise<SearchHit[]>;
+  /** Open the Tags browser, optionally pre-selecting a tag. */
+  openTags: (tag?: string | null) => void;
+  setTagFilter: (tag: string | null) => void;
+  /** Open the full-page search results view seeded with a query. */
+  openSearch: (q: string) => void;
+  backlinks: (id: string) => Promise<DocMeta[]>;
+  listTags: () => Promise<{ tag: string; count: number }[]>;
 }
 
 const api = () => window.docvault;
@@ -64,6 +84,8 @@ export const useStore = create<State>((set, get) => ({
   loading: true,
   error: null,
   resolvedTheme: 'light',
+  tagFilter: null,
+  searchQuery: '',
 
   refresh: async () => {
     try {
@@ -136,4 +158,9 @@ export const useStore = create<State>((set, get) => ({
   setRightTab: (t) => set({ rightTab: t }),
   setPalette: (open) => set({ paletteOpen: open }),
   search: (q) => api().search({ query: q, limit: 30 }),
+  openTags: (tag = null) => set({ view: 'tags', tagFilter: tag }),
+  setTagFilter: (tag) => set({ tagFilter: tag }),
+  openSearch: (q) => set({ view: 'search', searchQuery: q, paletteOpen: false }),
+  backlinks: (id) => api().backlinks(id),
+  listTags: () => api().listTags(),
 }));
