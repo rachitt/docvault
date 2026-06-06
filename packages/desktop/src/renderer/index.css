@@ -8,6 +8,10 @@
   --dv-text: #37352f;
   --dv-muted: #9b9a97;
   --dv-accent: #2563eb;
+  /* Diagram accent — deliberately purple (distinct from the blue UI accent) so
+     Mermaid diagrams read as their own kind of object. Mirrored in Mermaid.tsx
+     theme variables. */
+  --dv-diagram-accent: #7c3aed;
 }
 
 /*
@@ -28,6 +32,7 @@
   --dv-text: #e4e4e2;
   --dv-muted: #8b8b88;
   --dv-accent: #3b82f6;
+  --dv-diagram-accent: #a78bfa;
 
   /* Inverted neutral ramp: dark surfaces, light text. */
   --color-neutral-50: #1b1b1d;
@@ -159,26 +164,32 @@ body {
 .bn-block-content[data-content-type='mermaid'] {
   display: block;
 }
+/* Soft surface "figure card": a subtle tinted surface with a shadow makes the
+   diagram read as a distinct object rather than blending into the body text. The
+   diagram itself sits on an inset white panel (.dv-mermaid-svg). */
 .dv-mermaid {
-  margin: 0.5rem 0;
+  margin: 1.25rem 0;
   border: 1px solid var(--dv-border);
-  border-radius: 0.5rem;
+  border-radius: 0.875rem;
   overflow: hidden;
+  background: var(--dv-sidebar);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.05),
+    0 4px 14px rgba(16, 24, 40, 0.06);
 }
 .dv-mermaid-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.375rem 0.625rem;
-  background: var(--dv-sidebar);
-  border-bottom: 1px solid var(--dv-border);
+  padding: 0.4rem 0.7rem;
+  background: transparent;
   font-size: 0.75rem;
 }
 .dv-mermaid-label {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  color: var(--dv-muted);
+  color: var(--dv-diagram-accent);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -210,15 +221,17 @@ body {
   background: var(--dv-bg);
 }
 .dv-mermaid-svg {
-  /* Cap the diagram area at a comfortable medium width and center it. Mermaid's
+  /* Inset white panel the diagram sits on, capped at a comfortable medium width
+     and centered (the side gaps inset it from the tinted card). Mermaid's
      `width="100%"` SVG fills this box up to the cap; smaller diagrams keep their
      natural size. (Requires the display:block opt-out on the block content above,
      otherwise BlockNote's flex wrapper shrinks it to a sliver.) */
   padding: 1rem;
   background: var(--dv-bg);
+  border: 1px solid var(--dv-border);
+  border-radius: 0.625rem;
   max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0.1rem auto 0.7rem;
 }
 .dv-mermaid-svg svg {
   display: block;
