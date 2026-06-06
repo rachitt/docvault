@@ -1,0 +1,26 @@
+{
+  "name": "@docvault/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP stdio server exposing a DocVault to Claude Code and Codex",
+  "type": "module",
+  "bin": {
+    "docvault-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "start": "node dist/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@docvault/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3"
+  }
+}

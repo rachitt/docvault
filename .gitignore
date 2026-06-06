@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+release/
+out/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+# Local test vaults
+.test-vault/
+*.log

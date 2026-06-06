@@ -1,0 +1,35 @@
+{
+  "name": "@docvault/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DocVault storage + index core: markdown vault, SQLite FTS search, backlinks, importers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "chokidar": "^4.0.3",
+    "gray-matter": "^4.0.3",
+    "mammoth": "^1.9.0",
+    "ulid": "^2.3.0",
+    "unpdf": "^0.12.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

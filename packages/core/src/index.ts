@@ -1,0 +1,11 @@
+export { DocVault } from './docvault.js';
+export { Vault } from './vault.js';
+export { DocStore, parseDoc, serializeDoc, slugify } from './doc.js';
+export { Indexer } from './indexer.js';
+export { VaultWatcher } from './watcher.js';
+export { extractWikilinks } from './links.js';
+export { importFile, isImportable } from './import/index.js';
+export * from './types.js';
+export type { CreateDocInput } from './doc.js';
+export type { VaultChange } from './watcher.js';
+export type { ImportResult, ImportableExt } from './import/index.js';
