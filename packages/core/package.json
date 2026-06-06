@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/diagram.d.ts",
+      "default": "./dist/diagram.js"
     }
   },
   "scripts": {

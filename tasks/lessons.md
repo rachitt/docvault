@@ -2,8 +2,20 @@
 
 Append-only. Each entry: what went wrong → the fix. Read this at the start of each session.
 
+- **Diagrams must be high quality, always** (user is emphatic). A passing `validate_diagram`
+  is the floor, not the bar. Quality means: descriptive labels (not single abstract words),
+  no noisy self-loops/clutter, and pick a diagram type that *adds* a view rather than restating
+  another. For sequence diagrams use `autonumber`, `actor`/`participant` aliases, `opt`/`alt`
+  blocks, `activate`/`deactivate`, and `Note over` where they aid clarity. Don't dash off a
+  minimal diagram — design it.
+
 - **FTS5 + `snippet()`**: a contentless FTS5 table (`content=''`) can't produce snippets.
   Use a regular FTS5 table that stores the body (with a `doc_id UNINDEXED` column).
+- **Renderer can't value-import `@docvault/core`**: the barrel re-exports `DocVault` →
+  `doc.js` → `node:fs`, so a value import from `@docvault/core` breaks the browser bundle
+  ("readFile is not exported by __vite-browser-external"). Type-only imports are fine (erased).
+  For pure helpers the renderer needs (e.g. diagram templates), add a subpath `exports` entry in
+  core's package.json (`"./diagram"`) pointing at the fs-free module and import from there.
 - **chokidar `followSymlinks: false` breaks on macOS tmpdir**: `/var` is a symlink to
   `/private/var`, so watching a vault under `os.tmpdir()` silently emits no events with that flag.
   For symlink-escape safety, guard reads instead (canonicalize via `realpath` in `vault.abs()`),

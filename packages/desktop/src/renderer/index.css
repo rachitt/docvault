@@ -203,12 +203,19 @@ body {
   background: var(--dv-bg);
 }
 .dv-mermaid-svg {
-  display: flex;
-  justify-content: center;
+  /* Cap the diagram area at 900px and center it. A flex container here used to
+     collapse Mermaid's `width="100%"` SVG to a tiny intrinsic size — hence the
+     "too small" rendering. Capping the *container* (not the svg's max-width) lets
+     Mermaid fill up to 900px while small diagrams keep their natural size. */
   padding: 1rem;
   background: var(--dv-bg);
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .dv-mermaid-svg svg {
+  display: block;
+  margin: 0 auto;
   max-width: 100%;
   height: auto;
 }

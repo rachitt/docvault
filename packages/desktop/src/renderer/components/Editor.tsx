@@ -9,6 +9,7 @@ import {
 import { filterSuggestionItems } from '@blocknote/core';
 import { AlertTriangle, Link2, RefreshCw, Star, Workflow } from 'lucide-react';
 import type { Doc } from '@docvault/core';
+import { listDiagramTemplates } from '@docvault/core/diagram';
 import { useStore } from '../store';
 import { docVaultSchema, type DocVaultEditor } from '../editor/schema';
 import { blocksToMarkdown, markdownToBlocks } from '../editor/transform';
@@ -212,11 +213,29 @@ function customSlashItems(editor: DocVaultEditor): DefaultReactSuggestionItem[] 
         );
       },
     },
+    // Curated diagram templates from the shared core registry, so the slash
+    // menu and the MCP tools start from the same well-styled sources.
+    ...listDiagramTemplates().map(
+      (t): DefaultReactSuggestionItem => ({
+        title: `Diagram: ${t.label}`,
+        subtext: t.description,
+        aliases: ['mermaid', 'diagram', 'chart', 'flowchart', t.type, t.id],
+        group: 'Diagrams',
+        icon: <Workflow size={18} />,
+        onItemClick: () => {
+          editor.insertBlocks(
+            [{ type: 'mermaid', props: { code: t.source } }],
+            editor.getTextCursorPosition().block,
+            'after',
+          );
+        },
+      }),
+    ),
     {
-      title: 'Mermaid diagram',
-      subtext: 'Render a diagram from Mermaid source',
-      aliases: ['mermaid', 'diagram', 'chart', 'flowchart'],
-      group: 'Blocks',
+      title: 'Diagram: blank',
+      subtext: 'Empty Mermaid diagram — write your own source',
+      aliases: ['mermaid', 'diagram', 'chart', 'flowchart', 'blank'],
+      group: 'Diagrams',
       icon: <Workflow size={18} />,
       onItemClick: () => {
         editor.insertBlocks(

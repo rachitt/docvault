@@ -1,11 +1,20 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  validateMermaid,
+  serializeMermaidFence,
+  listDiagramTemplates,
+  getDiagramTemplate,
+  type ValidateResult,
+  type DiagramTemplate,
+} from './diagram.js';
 import { DocStore, assertSafeSegment, type CreateDocInput } from './doc.js';
 import { importFile } from './import/index.js';
 import { Indexer } from './indexer.js';
 import type {
   Doc,
   DocMeta,
+  DocStatus,
   Product,
   SearchHit,
   SearchOptions,
@@ -14,6 +23,24 @@ import type {
 } from './types.js';
 import { Vault } from './vault.js';
 import { VaultWatcher, type VaultChange } from './watcher.js';
+
+/** Input for {@link DocVault.createDiagram}. */
+export interface CreateDiagramInput {
+  /** Mermaid source (no fences). Takes precedence over `templateId`. */
+  code?: string;
+  /** Template id to use when `code` is omitted. */
+  templateId?: string;
+  /** Optional `## heading` placed above the diagram. */
+  heading?: string;
+  /** Append to this existing doc (vault-relative path) instead of creating one. */
+  path?: string;
+  /** Product slug for a new doc (required unless `path` is given). */
+  product?: string;
+  /** Title for a new doc (required unless `path` is given). */
+  title?: string;
+  tags?: string[];
+  status?: DocStatus;
+}
 
 /**
  * The primary entry point for working with a vault. Composes the filesystem
@@ -275,6 +302,70 @@ export class DocVault {
     const result = await importFile(this.vault, srcAbsPath, opts);
     this.index.upsert(result.doc);
     return result.doc;
+  }
+
+  // --- Diagrams ----------------------------------------------------------
+
+  /** Structurally lint Mermaid source (no DOM needed). See ./diagram. */
+  validateDiagram(code: string): ValidateResult {
+    return validateMermaid(code);
+  }
+
+  /** List curated Mermaid diagram templates (metadata + source). */
+  listDiagramTemplates(): DiagramTemplate[] {
+    return listDiagramTemplates();
+  }
+
+  /** Look up a single diagram template by id. */
+  getDiagramTemplate(id: string): DiagramTemplate | null {
+    return getDiagramTemplate(id);
+  }
+
+  /**
+   * Create a Mermaid diagram as a ```mermaid fenced block — either as a new doc
+   * (pass `product` + `title`) or appended to an existing doc (pass `path`). The
+   * source is taken from `code`, or from `templateId` when `code` is omitted, and
+   * is structurally validated first; any lint *error* throws (warnings pass).
+   */
+  async createDiagram(input: CreateDiagramInput): Promise<Doc> {
+    let source = input.code;
+    if (source === undefined && input.templateId) {
+      const tpl = getDiagramTemplate(input.templateId);
+      if (!tpl) throw new Error(`Unknown diagram template: ${input.templateId}`);
+      source = tpl.source;
+    }
+    if (source === undefined || source.trim().length === 0) {
+      throw new Error('createDiagram requires `code` or a valid `templateId`.');
+    }
+
+    const result = validateMermaid(source);
+    if (!result.ok) {
+      const errs = result.issues
+        .filter((i) => i.severity === 'error')
+        .map((i) => (i.line ? `line ${i.line}: ${i.message}` : i.message))
+        .join('; ');
+      throw new Error(`Invalid Mermaid diagram: ${errs}`);
+    }
+
+    const heading = input.heading ? `## ${input.heading}\n\n` : '';
+    const block = heading + serializeMermaidFence(source);
+
+    if (input.path) {
+      const existing = await this.docs.read(input.path);
+      const content = `${existing.content.trimEnd()}\n\n${block}\n`;
+      return this.updateDoc(input.path, { content });
+    }
+
+    if (!input.product || !input.title) {
+      throw new Error('createDiagram requires `path`, or both `product` and `title`.');
+    }
+    return this.createDoc({
+      product: input.product,
+      title: input.title,
+      content: block + '\n',
+      ...(input.tags ? { tags: input.tags } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    });
   }
 
   // --- Config helpers ----------------------------------------------------
