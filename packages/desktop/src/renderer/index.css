@@ -87,3 +87,151 @@ body {
 .bn-container {
   font-size: 16px;
 }
+
+/* --- Callout custom block --------------------------------------------- */
+.dv-callout {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  margin: 0.25rem 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+}
+.dv-callout-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-top: 0.1rem;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.dv-callout-body {
+  flex: 1;
+  min-width: 0;
+}
+.dv-callout-info {
+  background: #eff4ff;
+  border-color: #cdddff;
+  color: #1e3a8a;
+}
+.dv-callout-info .dv-callout-icon {
+  color: #2563eb;
+}
+.dv-callout-principle {
+  background: #f3f0ff;
+  border-color: #ddd2fb;
+  color: #5b3ba5;
+}
+.dv-callout-principle .dv-callout-icon {
+  color: #7c3aed;
+}
+.dv-callout-warning {
+  background: #fff7ed;
+  border-color: #fcdbb0;
+  color: #9a4d12;
+}
+.dv-callout-warning .dv-callout-icon {
+  color: #ea580c;
+}
+.dark .dv-callout-info {
+  background: #16233f;
+  border-color: #294574;
+  color: #bfd3ff;
+}
+.dark .dv-callout-principle {
+  background: #241c3d;
+  border-color: #41356b;
+  color: #d3c4ff;
+}
+.dark .dv-callout-warning {
+  background: #2c1e10;
+  border-color: #57391a;
+  color: #f3c89a;
+}
+
+/* --- Mermaid custom block --------------------------------------------- */
+.dv-mermaid {
+  margin: 0.5rem 0;
+  border: 1px solid var(--dv-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.dv-mermaid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.625rem;
+  background: var(--dv-sidebar);
+  border-bottom: 1px solid var(--dv-border);
+  font-size: 0.75rem;
+}
+.dv-mermaid-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--dv-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.dv-mermaid-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  color: var(--dv-text);
+  background: transparent;
+  border: 1px solid var(--dv-border);
+  cursor: pointer;
+}
+.dv-mermaid-toolbar button:hover {
+  background: var(--dv-bg);
+}
+.dv-mermaid-source {
+  width: 100%;
+  min-height: 7rem;
+  padding: 0.75rem;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--dv-text);
+  background: var(--dv-bg);
+}
+.dv-mermaid-svg {
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--dv-bg);
+}
+.dv-mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+.dv-mermaid-empty {
+  padding: 1rem;
+  color: var(--dv-muted);
+  font-size: 0.875rem;
+}
+.dv-mermaid-error {
+  padding: 0.75rem 1rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  font-size: 0.8125rem;
+}
+.dark .dv-mermaid-error {
+  color: #f87171;
+  background: #2a1515;
+}
+.dv-mermaid-error-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.dv-mermaid-error pre {
+  white-space: pre-wrap;
+  margin: 0;
+}
