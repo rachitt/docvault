@@ -27,6 +27,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const toggleStar = useStore((s) => s.toggleStar);
   const search = useStore((s) => s.search);
   const docs = useStore((s) => s.docs);
+  const products = useStore((s) => s.products);
   const config = useStore((s) => s.config);
   const resolvedTheme = useStore((s) => s.resolvedTheme);
   const editor = useCreateBlockNote({ schema: docVaultSchema });
@@ -43,6 +44,8 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const conflictRef = useRef<Doc | null>(null);
 
   const starred = config?.starred.includes(doc.frontmatter.id) ?? false;
+  const productSlug = doc.relPath.split('/')[1];
+  const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
 
   // Load (or reload) the doc into the editor. Keyed on `reloadNonce` rather than
   // `doc.content` so our own debounced saves don't reset the editor mid-typing;
@@ -152,6 +155,9 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           </button>
         </div>
       )}
+      <div className="mb-1.5 text-xs tracking-wide text-neutral-500">
+        {productTitle ? `${productTitle} / ${doc.frontmatter.title}` : doc.frontmatter.title}
+      </div>
       <div className="mb-2 flex items-center gap-2">
         <h1 className="flex-1 text-4xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
           {doc.frontmatter.title}

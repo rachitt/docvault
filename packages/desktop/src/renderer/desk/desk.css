@@ -37,7 +37,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  /* UI chrome is sans; the document editor opts into serif (see .bn-container). */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
   color: var(--ink);
   background:
     /* fine grain striations */
@@ -76,7 +77,8 @@
   -webkit-app-region: drag;
 }
 .desk-title {
-  font-size: 14px;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: #e9d9b8;
@@ -325,6 +327,45 @@
 .desk .dv-mermaid-svg {
   background: #fbf6e8;
   border-color: #d8c7a0;
+}
+
+/* The document should read as one warm sheet of paper, not a white card sitting
+   on parchment. Dissolve BlockNote's own surface into the editor pane and give
+   the body serif "printed page" typography to match the desk. */
+.desk-surface--app > main {
+  background:
+    radial-gradient(120% 60% at 100% 0%, rgba(120, 95, 50, 0.06), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(120, 95, 50, 0.022) 0px, transparent 1px, transparent 28px),
+    var(--paper) !important;
+}
+.desk .bn-container,
+.desk .bn-container[data-color-scheme] {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: #38301f;
+  --bn-colors-side-menu: #b8a888;
+  background: transparent !important;
+}
+.desk .bn-editor {
+  background: transparent !important;
+}
+/* serif document type for prose + headings; code stays monospaced */
+.desk .bn-container .bn-block-content,
+.desk .bn-container .bn-inline-content {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+.desk .bn-container h1 .bn-inline-content,
+.desk .bn-container h2 .bn-inline-content,
+.desk .bn-container h3 .bn-inline-content {
+  letter-spacing: -0.01em;
+}
+.desk .bn-container code,
+.desk .bn-container pre,
+.desk .bn-container [data-content-type='codeBlock'] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* the page title in the editor header, warmed to match the sheet */
+.desk-surface--app > main h1 {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
 }
 
 /* ---------------------------------------------------------------- statusbar */
