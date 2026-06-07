@@ -368,9 +368,20 @@ function FlowchartVisualEditor({
 
   const deleteSelectedEdge = (): void => {
     if (!selectedEdge) return;
+    const edgeToDelete = model.edges.find((edge) => edge.id === selectedEdge);
+    if (!edgeToDelete) {
+      setSelectedEdge(null);
+      return;
+    }
+    const remainingEdges = model.edges.filter((edge) => edge.id !== selectedEdge);
+    const targetStillConnected = remainingEdges.some((edge) => edge.to === edgeToDelete.to);
+    const removeNodeId = targetStillConnected ? null : edgeToDelete.to;
     const next = {
       ...model,
-      edges: model.edges.filter((edge) => edge.id !== selectedEdge),
+      nodes: removeNodeId ? model.nodes.filter((node) => node.id !== removeNodeId) : model.nodes,
+      edges: removeNodeId
+        ? remainingEdges.filter((edge) => edge.from !== removeNodeId && edge.to !== removeNodeId)
+        : remainingEdges,
     };
     setSelectedEdge(null);
     onChange(serializeFlowchart(next));
