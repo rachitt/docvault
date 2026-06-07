@@ -79,7 +79,9 @@
   --dv-text: #3a3024;
   --dv-muted: #8a7a5c;
   --dv-accent: #6f8a4a;
-  --dv-diagram-accent: #7c5acc;
+  /* quiet sepia for the diagram label — the desk's Mermaid palette is neutral,
+     not the brand purple used in the default themes (see Mermaid.tsx DESK_VARS) */
+  --dv-diagram-accent: #7d6a48;
 
   /* Parchment-toned neutral ramp: light aged-paper surfaces, dark sepia text. */
   --color-neutral-50: #f6efda;

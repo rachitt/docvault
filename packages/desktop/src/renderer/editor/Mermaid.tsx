@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify';
 import { Check, Pencil, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
-let initializedTheme: 'light' | 'dark' | null = null;
+let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
 let counter = 0;
 
 /**
@@ -38,6 +38,35 @@ const LIGHT_VARS = {
   fontSize: '14px',
 } as const;
 
+/**
+ * Desk theme: quiet, sepia-toned diagrams that sit naturally on the parchment —
+ * warm near-white nodes, thin muted borders, gray-brown connectors. No purple,
+ * so the diagram reads like an inked figure on the page rather than a UI object.
+ */
+const DESK_VARS = {
+  primaryColor: '#fbf6e8',
+  primaryBorderColor: '#ab9a78',
+  primaryTextColor: '#3a3024',
+  nodeTextColor: '#3a3024',
+  lineColor: '#9a8a6a',
+  secondaryColor: '#f3ead3',
+  tertiaryColor: '#efe6cd',
+  actorBkg: '#fbf6e8',
+  actorBorder: '#ab9a78',
+  actorTextColor: '#3a3024',
+  signalColor: '#8a7a5c',
+  signalTextColor: '#3a3024',
+  labelBoxBkgColor: '#f3ead3',
+  labelBoxBorderColor: '#ab9a78',
+  labelTextColor: '#3a3024',
+  loopTextColor: '#3a3024',
+  noteBkgColor: '#f4e27e',
+  noteBorderColor: '#caa85e',
+  noteTextColor: '#5a4a18',
+  fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+  fontSize: '14px',
+} as const;
+
 const DARK_VARS = {
   darkMode: true,
   background: '#1b1b1d',
@@ -65,7 +94,9 @@ const DARK_VARS = {
 } as const;
 
 function ensureInit(): void {
-  const mode = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  const cls = document.documentElement.classList;
+  // The desk skin wins over light/dark when present (it forces its own palette).
+  const mode = cls.contains('desk') ? 'desk' : cls.contains('dark') ? 'dark' : 'light';
   // Re-initialize when the app theme flips so diagrams re-render in the right palette.
   if (initializedTheme === mode) return;
   mermaid.initialize({
@@ -78,7 +109,7 @@ function ensureInit(): void {
     // SVG text survives the sanitizer and keeps the security posture intact.
     htmlLabels: false,
     flowchart: { htmlLabels: false },
-    themeVariables: mode === 'dark' ? DARK_VARS : LIGHT_VARS,
+    themeVariables: mode === 'desk' ? DESK_VARS : mode === 'dark' ? DARK_VARS : LIGHT_VARS,
   });
   initializedTheme = mode;
 }

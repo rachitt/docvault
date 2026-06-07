@@ -315,18 +315,33 @@
   min-width: 0;
 }
 
-/* Make the Mermaid figure read as a distinct card against the parchment editor:
-   a slightly deeper tint + inset near-white panel for the diagram itself. */
+/* The diagram should sit naturally on the paper as an inked figure, not as a
+   distinct UI card: dissolve the figure surface, keep only a hairline frame and
+   the diagram on the bare sheet (the desk Mermaid palette gives the boxes their
+   own warm near-white fill — see Mermaid.tsx DESK_VARS). */
 .desk .dv-mermaid {
-  background: #e7dabb;
-  border-color: #cdb98c;
-  box-shadow:
-    0 1px 2px rgba(58, 42, 18, 0.08),
-    0 6px 16px rgba(58, 42, 18, 0.12);
+  background: transparent;
+  border: 1px solid rgba(124, 92, 40, 0.16);
+  border-radius: 8px;
+  box-shadow: none;
 }
 .desk .dv-mermaid-svg {
-  background: #fbf6e8;
-  border-color: #d8c7a0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.5rem 0.75rem 0.9rem;
+  max-width: 640px;
+}
+/* a subtle hairline under the toolbar to separate it from the figure */
+.desk .dv-mermaid-toolbar {
+  border-bottom: 1px solid rgba(124, 92, 40, 0.1);
+}
+/* keep the diagram label quiet and weighted like a figure caption */
+.desk .dv-mermaid-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
 }
 
 /* The document should read as one warm sheet of paper, not a white card sitting
