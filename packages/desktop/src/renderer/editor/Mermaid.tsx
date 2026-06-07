@@ -315,14 +315,6 @@ function FlowchartVisualEditor({
     }
   }, [model, selectedEdge]);
 
-  const setFlowActive = (active: boolean): void => {
-    document.documentElement.classList.toggle('dv-flow-active', active);
-  };
-
-  useEffect(() => {
-    return () => setFlowActive(false);
-  }, []);
-
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
@@ -401,15 +393,6 @@ function FlowchartVisualEditor({
       className="dv-flow-editor"
       style={{ minWidth: width, minHeight: height }}
       tabIndex={0}
-      onFocus={() => setFlowActive(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setFlowActive(false);
-      }}
-      onPointerEnter={() => setFlowActive(true)}
-      onPointerLeave={(e) => {
-        const active = document.activeElement;
-        if (!active || !e.currentTarget.contains(active)) setFlowActive(false);
-      }}
       onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}

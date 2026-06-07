@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
+  FormattingToolbar,
+  FormattingToolbarController,
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
@@ -33,6 +35,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const editor = useCreateBlockNote({ schema: docVaultSchema });
 
   const [ready, setReady] = useState(false);
+  const [showParagraphToolbar, setShowParagraphToolbar] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [conflict, setConflict] = useState<Doc | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,6 +50,13 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
+  const updateToolbarVisibility = useCallback(() => {
+    try {
+      setShowParagraphToolbar(editor.getTextCursorPosition().block.type === 'paragraph');
+    } catch {
+      setShowParagraphToolbar(false);
+    }
+  }, [editor]);
 
   // Load (or reload) the doc into the editor. Keyed on `reloadNonce` rather than
   // `doc.content` so our own debounced saves don't reset the editor mid-typing;
@@ -181,12 +191,15 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
       <BlockNoteView
         editor={editor}
         onChange={onChange}
+        onSelectionChange={updateToolbarVisibility}
         // The desk skin is always light parchment; force BlockNote's internal
         // palette to light so it can't render dark menus/code under the paper.
         theme={deskActive ? 'light' : resolvedTheme}
+        formattingToolbar={false}
         slashMenu={false}
         className="bn-container"
       >
+        {showParagraphToolbar ? <FormattingToolbarController formattingToolbar={FormattingToolbar} /> : null}
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) =>
