@@ -139,6 +139,8 @@
 }
 .desk-tab {
   position: relative;
+  appearance: none;
+  border: 0;
   padding: 9px 16px 11px;
   border-radius: 7px 7px 3px 3px;
   font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
@@ -407,5 +409,15 @@
 }
 .desk-statusbar .sep { opacity: 0.3; }
 .desk-statusbar .spacer { flex: 1; }
-.desk-statusbar .gear { cursor: pointer; opacity: 0.8; }
+.desk-statusbar .gear {
+  display: inline-flex;
+  align-items: center;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.8;
+}
 .desk-statusbar .gear:hover { opacity: 1; }

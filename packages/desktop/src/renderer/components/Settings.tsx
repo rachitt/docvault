@@ -2,15 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   Bot,
   Check,
-  Monitor,
-  Moon,
   Palette,
   SlidersHorizontal,
   Sparkles,
-  Sun,
   Terminal,
 } from 'lucide-react';
-import type { ThemeMode, VaultConfig } from '@docvault/core';
+import type { VaultConfig } from '@docvault/core';
 import { useStore } from '../store';
 
 const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -18,17 +15,10 @@ const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: strin
   { value: 'codex', label: 'Codex', hint: 'OpenAI Codex via the Codex CLI.', icon: Terminal },
 ];
 
-const THEMES: { value: ThemeMode; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
-];
-
 export function Settings(): React.JSX.Element {
   const config = useStore((s) => s.config);
   const trash = useStore((s) => s.trash);
   const updateConfig = useStore((s) => s.updateConfig);
-  const setTheme = useStore((s) => s.setTheme);
 
   // Local mirror of the workspace name so typing feels immediate; we persist on blur.
   const [name, setName] = useState(config?.workspaceName ?? '');
@@ -68,28 +58,11 @@ export function Settings(): React.JSX.Element {
         </Field>
       </Section>
 
-      <Section title="Appearance" description="Choose how DocVault looks." icon={Palette}>
-        <Field label="Theme">
-          <div className="grid grid-cols-3 gap-2">
-            {THEMES.map(({ value, label, icon: Icon }) => {
-              const active = (config.theme ?? 'system') === value;
-              return (
-                <button
-                  key={value}
-                  onClick={() => void setTheme(value)}
-                  className={`flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors ${
-                    active
-                      ? 'border-[var(--dv-accent)] bg-blue-50/50'
-                      : 'border-[var(--dv-border)] bg-white hover:border-neutral-300'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="text-xs font-medium text-neutral-700">{label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </Field>
+      <Section title="Appearance" description="How DocVault looks." icon={Palette}>
+        <p className="text-sm text-neutral-500">
+          DocVault uses the <span className="font-medium text-neutral-700">Desk</span> theme — a
+          warm, always-light parchment workspace.
+        </p>
       </Section>
 
       <Section
