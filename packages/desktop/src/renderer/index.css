@@ -64,6 +64,50 @@
   background-color: #202022;
 }
 
+/*
+ * "Desk" theme. Applied by toggling `.desk` on <html> (see DeskApp). Reuses the
+ * same token + neutral-ramp remap trick as `.dark`, so every real component
+ * (Sidebar, Editor, RightPanel, lists, settings…) re-skins to warm parchment /
+ * sepia with no per-component edits. Declared AFTER `.dark` so it wins on the
+ * shared vars even when both classes are present (equal specificity → source
+ * order), keeping the desk palette stable regardless of the OS appearance.
+ */
+.desk {
+  --dv-bg: #f4ecd6;
+  --dv-sidebar: #ece1c5;
+  --dv-border: #d8c7a0;
+  --dv-text: #3a3024;
+  --dv-muted: #8a7a5c;
+  --dv-accent: #6f8a4a;
+  /* quiet sepia for the diagram label — the desk's Mermaid palette is neutral,
+     not the brand purple used in the default themes (see Mermaid.tsx DESK_VARS) */
+  --dv-diagram-accent: #7d6a48;
+
+  /* Parchment-toned neutral ramp: light aged-paper surfaces, dark sepia text. */
+  --color-neutral-50: #f6efda;
+  --color-neutral-100: #efe6cd;
+  --color-neutral-200: #e4d7b6;
+  --color-neutral-300: #d2c099;
+  --color-neutral-400: #9a8a6a;
+  --color-neutral-500: #7d6e50;
+  --color-neutral-600: #5f5340;
+  --color-neutral-700: #4a3f30;
+  --color-neutral-800: #382f24;
+  --color-neutral-900: #2a2319;
+
+  /* Soft accent surfaces for selected / error states. */
+  --color-blue-50: #e6ecd6;
+  --color-red-50: #f6e3d2;
+  --color-red-500: #c0392b;
+  --color-red-600: #a93226;
+
+  color-scheme: light;
+}
+
+.desk .bg-white {
+  background-color: #f4ecd6;
+}
+
 html,
 body,
 #root {

@@ -1,0 +1,411 @@
+/*
+ * "Desk" theme — a skeuomorphic wooden-desk reskin of DocVault.
+ * Styles for the desk chrome (titlebar, shelf, spaces tabs, search, sticky
+ * note, blotter, status bar, decorative pen) used by DeskApp.tsx, which wraps
+ * the live Sidebar / MainPane / RightPanel. Component colors come from the
+ * `.desk` token remap in index.css.
+ */
+
+.desk-app {
+  --wood-darkest: #20160d;
+  --wood-dark: #3a2818;
+  --wood: #5a3f27;
+  --wood-light: #7a5635;
+  --wood-edge: #8a6a44;
+
+  --blotter: #5a6347;
+  --blotter-dark: #444d36;
+  --blotter-felt: #636c4d;
+
+  --paper: #f2e9d2;
+  --paper-edge: #d9c9a0;
+  --paper-shadow: rgba(40, 28, 14, 0.32);
+  --ink: #3a3024;
+  --ink-soft: #6a5c44;
+  --ink-faint: #9a8a6a;
+
+  --note: #f4e27e;
+  --note-line: #e3cf63;
+
+  --tab-green: #82a05a;
+  --tab-tan: #d8b478;
+  --tab-purple: #9d7fc4;
+  --tab-blue: #7ea6cc;
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* UI chrome is sans; the document editor opts into serif (see .bn-container). */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    /* fine grain striations */
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(255, 255, 255, 0.018) 3px,
+      rgba(0, 0, 0, 0.04) 7px
+    ),
+    /* plank seams */
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.28) 0px,
+      rgba(0, 0, 0, 0.28) 2px,
+      rgba(255, 255, 255, 0.04) 4px,
+      rgba(0, 0, 0, 0) 7px,
+      rgba(0, 0, 0, 0) 132px,
+      rgba(255, 255, 255, 0.05) 134px,
+      rgba(0, 0, 0, 0.28) 136px
+    ),
+    linear-gradient(180deg, var(--wood-dark) 0%, var(--wood-light) 45%, var(--wood) 70%, var(--wood-dark) 100%);
+}
+
+/* ---------------------------------------------------------------- title bar */
+.desk-titlebar {
+  flex: 0 0 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* leave room for the macOS hiddenInset traffic lights */
+  padding: 0 16px 0 84px;
+  background: linear-gradient(180deg, var(--wood-darkest), var(--wood-dark));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  -webkit-app-region: drag;
+}
+.desk-title {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #e9d9b8;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+.desk-workspace {
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: rgba(233, 217, 184, 0.6);
+}
+
+/* -------------------------------------------------------------------- shelf */
+.desk-shelf {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  padding: 14px 26px 18px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0) 40%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.1) 0px,
+      rgba(255, 255, 255, 0.02) 80px,
+      rgba(0, 0, 0, 0.1) 160px
+    ),
+    linear-gradient(180deg, var(--wood) 0%, var(--wood-dark) 100%);
+  border-bottom: 2px solid var(--wood-darkest);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  -webkit-app-region: drag;
+}
+.desk-shelf .desk-tab,
+.desk-shelf .desk-search,
+.desk-shelf .desk-note,
+.desk-shelf .desk-tab-add,
+.desk-shelf .desk-space-input {
+  -webkit-app-region: no-drag;
+}
+
+.desk-spaces {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.desk-eyebrow {
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(233, 217, 184, 0.65);
+  text-transform: uppercase;
+}
+.desk-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+}
+.desk-tab {
+  position: relative;
+  padding: 9px 16px 11px;
+  border-radius: 7px 7px 3px 3px;
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3a2c18;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 4px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.desk-tab:hover {
+  transform: translateY(-2px);
+}
+.desk-tab[data-active='true'] {
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 7px 12px rgba(0, 0, 0, 0.4);
+}
+.desk-tab--green { background: linear-gradient(180deg, #93b06a, var(--tab-green, #82a05a)); }
+.desk-tab--tan { background: linear-gradient(180deg, #e6c489, var(--tab-tan, #d8b478)); }
+.desk-tab--purple { background: linear-gradient(180deg, #ad8fd4, var(--tab-purple, #9d7fc4)); }
+.desk-tab--blue { background: linear-gradient(180deg, #92b7d9, var(--tab-blue, #7ea6cc)); }
+
+.desk-tab-add {
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #e9d9b8;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+.desk-tab-add:hover { background: rgba(255, 255, 255, 0.16); }
+
+/* inline "new space" input living in the shelf */
+.desk-space-input {
+  align-self: center;
+  width: 120px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: #2e261b;
+  background: var(--paper);
+  border: 1px solid var(--wood-edge);
+  outline: none;
+}
+
+/* recessed brass search slot */
+.desk-search-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+}
+.desk-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(440px, 100%);
+  padding: 9px 14px;
+  border-radius: 9px;
+  color: #d8cbab;
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.22));
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.5) inset,
+    0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.desk-search:hover { color: #eadcb8; }
+.desk-search .kbd {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #cbbf9f;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* sticky note pinned to the shelf — a real persisted scratchpad */
+.desk-note {
+  flex: 0 0 auto;
+  width: 168px;
+  padding: 10px 13px 12px;
+  transform: rotate(2.2deg);
+  color: #5a4a18;
+  background:
+    repeating-linear-gradient(180deg, transparent 0px, transparent 21px, var(--note-line) 22px),
+    linear-gradient(160deg, #f7e98c, var(--note));
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  font-family: 'Bradley Hand', 'Segoe Print', 'Comic Sans MS', cursive;
+}
+.desk-note-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.desk-note textarea {
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.desk-note textarea::placeholder { color: rgba(90, 74, 24, 0.45); }
+.desk-pin {
+  position: absolute;
+  margin-top: -20px;
+  margin-left: 64px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a8a, #c0392b);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* a brass-nibbed pen resting on the shelf (decorative, never over content) */
+.desk-shelf-pen {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 150px;
+  height: 16px;
+  transform: translateX(-50%) rotate(-3deg);
+  pointer-events: none;
+  opacity: 0.92;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.45));
+}
+
+/* ----------------------------------------------------------- desk surface */
+/* the live panes (<aside>/<main>) sit on the blotter with gaps, as paper */
+.desk-surface--app {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  gap: 18px;
+  padding: 18px 22px 20px;
+  background:
+    /* felt weave */
+    repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.035) 0px, transparent 1px, transparent 3px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.02) 0px, transparent 1px, transparent 3px),
+    /* edge vignette + center sheen */
+    radial-gradient(130% 90% at 50% 35%, var(--blotter-felt), transparent 70%),
+    radial-gradient(120% 80% at 50% -10%, rgba(0, 0, 0, 0.3), transparent 55%),
+    linear-gradient(180deg, var(--blotter) 0%, var(--blotter-dark) 100%);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.32) inset,
+    0 0 60px rgba(0, 0, 0, 0.25) inset;
+}
+.desk-surface--app > aside,
+.desk-surface--app > main {
+  border: 1px solid var(--paper-edge) !important;
+  border-radius: 6px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 10px 22px var(--paper-shadow);
+}
+.desk-surface--app > main {
+  min-width: 0;
+}
+
+/* The diagram should sit naturally on the paper as an inked figure, not as a
+   distinct UI card: dissolve the figure surface, keep only a hairline frame and
+   the diagram on the bare sheet (the desk Mermaid palette gives the boxes their
+   own warm near-white fill — see Mermaid.tsx DESK_VARS). */
+.desk .dv-mermaid {
+  background: transparent;
+  border: 1px solid rgba(124, 92, 40, 0.16);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.desk .dv-mermaid-svg {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.5rem 0.75rem 0.9rem;
+  max-width: 640px;
+}
+/* a subtle hairline under the toolbar to separate it from the figure */
+.desk .dv-mermaid-toolbar {
+  border-bottom: 1px solid rgba(124, 92, 40, 0.1);
+}
+/* keep the diagram label quiet and weighted like a figure caption */
+.desk .dv-mermaid-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+/* The document should read as one warm sheet of paper, not a white card sitting
+   on parchment. Dissolve BlockNote's own surface into the editor pane and give
+   the body serif "printed page" typography to match the desk. */
+.desk-surface--app > main {
+  background:
+    radial-gradient(120% 60% at 100% 0%, rgba(120, 95, 50, 0.06), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(120, 95, 50, 0.022) 0px, transparent 1px, transparent 28px),
+    var(--paper) !important;
+}
+.desk .bn-container,
+.desk .bn-container[data-color-scheme] {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: #38301f;
+  --bn-colors-side-menu: #b8a888;
+  background: transparent !important;
+}
+.desk .bn-editor {
+  background: transparent !important;
+}
+/* serif document type for prose + headings; code stays monospaced */
+.desk .bn-container .bn-block-content,
+.desk .bn-container .bn-inline-content {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+.desk .bn-container h1 .bn-inline-content,
+.desk .bn-container h2 .bn-inline-content,
+.desk .bn-container h3 .bn-inline-content {
+  letter-spacing: -0.01em;
+}
+.desk .bn-container code,
+.desk .bn-container pre,
+.desk .bn-container [data-content-type='codeBlock'] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* the page title in the editor header, warmed to match the sheet */
+.desk-surface--app > main h1 {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+
+/* ---------------------------------------------------------------- statusbar */
+.desk-statusbar {
+  flex: 0 0 auto;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  color: #d4c5a3;
+  background: linear-gradient(180deg, var(--wood-dark), var(--wood-darkest));
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+.desk-statusbar .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6fbf73;
+  box-shadow: 0 0 6px rgba(110, 200, 120, 0.6);
+}
+.desk-statusbar .sep { opacity: 0.3; }
+.desk-statusbar .spacer { flex: 1; }
+.desk-statusbar .gear { cursor: pointer; opacity: 0.8; }
+.desk-statusbar .gear:hover { opacity: 1; }
