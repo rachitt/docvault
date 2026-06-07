@@ -37,6 +37,8 @@ export function Sidebar(): React.JSX.Element {
   const openDoc = useStore((s) => s.openDoc);
   const newDoc = useStore((s) => s.newDoc);
   const newProduct = useStore((s) => s.newProduct);
+  const trashDoc = useStore((s) => s.trashDoc);
+  const deleteProduct = useStore((s) => s.deleteProduct);
   const importFile = useStore((s) => s.importFile);
 
   const [addingProduct, setAddingProduct] = useState(false);
@@ -110,6 +112,16 @@ export function Sidebar(): React.JSX.Element {
             currentPath={currentDoc?.relPath ?? null}
             onOpen={(d) => void openDoc(d.id)}
             onCreateDoc={(title) => void newDoc(p.slug, title)}
+            onDelete={() => {
+              if (
+                window.confirm(
+                  `Delete "${p.title}" and all its docs? They move to Trash and are auto-removed after 24 hours.`,
+                )
+              ) {
+                void deleteProduct(p.slug);
+              }
+            }}
+            onTrashDoc={(d) => void trashDoc(d.relPath)}
           />
         ))}
         {products.length === 0 && !addingProduct && (
@@ -146,6 +158,8 @@ function ProductNode(props: {
   currentPath: string | null;
   onOpen: (d: DocMeta) => void;
   onCreateDoc: (title: string) => void;
+  onDelete: () => void;
+  onTrashDoc: (d: DocMeta) => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -175,6 +189,13 @@ function ProductNode(props: {
         >
           <Plus size={13} className="text-neutral-400" />
         </button>
+        <button
+          onClick={props.onDelete}
+          title="Delete product"
+          className="opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 size={13} className="text-neutral-400 hover:text-red-500" />
+        </button>
       </div>
       {open && (
         <div className="ml-5 border-l border-neutral-200 pl-1">
@@ -189,16 +210,27 @@ function ProductNode(props: {
             />
           )}
           {props.docs.map((d) => (
-            <button
+            <div
               key={d.id}
-              onClick={() => props.onOpen(d)}
-              className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-neutral-600 hover:bg-neutral-200/60 ${
+              className={`group/doc flex items-center rounded-md text-neutral-600 hover:bg-neutral-200/60 ${
                 props.currentPath === d.relPath ? 'bg-neutral-200/80 text-neutral-900' : ''
               }`}
             >
-              <FileText size={13} className="shrink-0 text-neutral-400" />
-              <span className="truncate">{d.title}</span>
-            </button>
+              <button
+                onClick={() => props.onOpen(d)}
+                className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-left"
+              >
+                <FileText size={13} className="shrink-0 text-neutral-400" />
+                <span className="truncate">{d.title}</span>
+              </button>
+              <button
+                onClick={() => props.onTrashDoc(d)}
+                title="Move to trash"
+                className="px-1.5 opacity-0 group-hover/doc:opacity-100"
+              >
+                <Trash2 size={12} className="text-neutral-400 hover:text-red-500" />
+              </button>
+            </div>
           ))}
           {props.docs.length === 0 && !adding && (
             <p className="px-2 py-1 text-xs text-neutral-400">empty</p>

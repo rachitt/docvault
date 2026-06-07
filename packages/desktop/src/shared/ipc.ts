@@ -5,6 +5,7 @@ import type {
   Product,
   SearchHit,
   SearchOptions,
+  TrashEntry,
   VaultConfig,
 } from '@docvault/core';
 
@@ -17,6 +18,9 @@ export const CH = {
   createDoc: 'dv:createDoc',
   updateDoc: 'dv:updateDoc',
   trashDoc: 'dv:trashDoc',
+  deleteProduct: 'dv:deleteProduct',
+  listTrash: 'dv:listTrash',
+  restoreTrash: 'dv:restoreTrash',
   search: 'dv:search',
   backlinks: 'dv:backlinks',
   listTags: 'dv:listTags',
@@ -54,6 +58,12 @@ export interface DocVaultApi {
   createDoc(input: CreateDocInput): Promise<Doc>;
   updateDoc(relPath: string, patch: UpdateDocPatch): Promise<Doc>;
   trashDoc(relPath: string): Promise<void>;
+  /** Soft-delete a product and all its docs; recoverable from trash. */
+  deleteProduct(slug: string): Promise<void>;
+  /** List soft-deleted docs/products still recoverable from trash. */
+  listTrash(): Promise<TrashEntry[]>;
+  /** Restore a trashed doc/product to its original location by trash path. */
+  restoreTrash(trashPath: string): Promise<void>;
   search(opts: SearchOptions): Promise<SearchHit[]>;
   backlinks(id: string): Promise<DocMeta[]>;
   listTags(): Promise<{ tag: string; count: number }[]>;

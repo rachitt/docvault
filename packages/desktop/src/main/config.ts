@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { VaultConfig } from '@docvault/core';
+import { normalizeTrash, type VaultConfig } from '@docvault/core';
 
 const DEFAULTS: VaultConfig = {
   workspaceName: 'My Workspace',
@@ -27,7 +27,8 @@ export class ConfigStore {
   async read(): Promise<VaultConfig> {
     try {
       const raw = await readFile(this.file, 'utf8');
-      return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<VaultConfig>) };
+      const parsed = JSON.parse(raw) as Partial<VaultConfig>;
+      return { ...DEFAULTS, ...parsed, trash: normalizeTrash(parsed.trash) };
     } catch {
       return { ...DEFAULTS };
     }

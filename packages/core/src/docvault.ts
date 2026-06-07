@@ -9,6 +9,7 @@ import type {
   Product,
   SearchHit,
   SearchOptions,
+  TrashEntry,
   VaultConfig,
 } from './types.js';
 import { Vault } from './vault.js';
@@ -37,8 +38,12 @@ export class DocVault {
     await vault.ensure();
     const dv = new DocVault(vault);
     await dv.reindexAll();
+    await dv.purgeExpiredTrash();
     return dv;
   }
+
+  /** How long a trashed item is kept before it is permanently purged. */
+  static readonly TRASH_TTL_MS = 24 * 60 * 60 * 1000;
 
   /** Rebuild the entire index from the markdown files on disk. */
   async reindexAll(): Promise<number> {
@@ -160,12 +165,99 @@ export class DocVault {
     return doc;
   }
 
+  /** Soft-delete a single doc: move it to trash and drop it from the index. */
   async trashDoc(relPath: string): Promise<void> {
-    await this.docs.trash(relPath);
+    let title = path.basename(relPath);
+    try {
+      title = (await this.docs.read(relPath)).frontmatter.title;
+    } catch {
+      /* unreadable/missing — fall back to the filename */
+    }
+    const trashPath = await this.docs.trash(relPath);
     this.index.removeByPath(relPath);
+    await this.addTrashEntry({
+      kind: 'doc',
+      relPath,
+      trashPath,
+      title,
+      deletedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Soft-delete a whole product: move its docs/<slug> folder (docs + product.json)
+   * to trash, drop every doc it contained from the index, and record it for
+   * restore. The folder is recoverable until auto-purged.
+   */
+  async deleteProduct(slug: string): Promise<void> {
+    assertSafeSegment(slug, 'product slug');
+    const relDir = `docs/${slug}`;
+    const cfg = await this.readProductConfig(slug);
+    const title = cfg.title ?? slug;
+    for (const d of this.index.listDocs({ product: slug })) {
+      this.index.removeByPath(d.relPath);
+    }
+    const trashPath = await this.docs.trash(relDir);
+    await this.addTrashEntry({
+      kind: 'product',
+      relPath: relDir,
+      trashPath,
+      title,
+      deletedAt: new Date().toISOString(),
+    });
+  }
+
+  /** List trashed items, purging any that have outlived the retention window. */
+  async listTrash(): Promise<TrashEntry[]> {
+    const cfg = await this.purgeExpiredTrash();
+    return cfg.trash;
+  }
+
+  /** Restore a trashed doc/product back to its original location and re-index it. */
+  async restoreTrash(trashPath: string): Promise<void> {
     const cfg = await this.vault.readConfig();
-    const trash = cfg.trash.includes(relPath) ? cfg.trash : [...cfg.trash, relPath];
-    await this.vault.updateConfig({ trash });
+    const entry = cfg.trash.find((e) => e.trashPath === trashPath);
+    if (!entry) throw new Error(`No trash entry: ${trashPath}`);
+    await this.docs.restore(entry.trashPath, entry.relPath);
+    await this.reindexUnder(entry.relPath);
+    await this.vault.updateConfig({ trash: cfg.trash.filter((e) => e.trashPath !== trashPath) });
+  }
+
+  /** Permanently delete trash entries older than the retention window. */
+  async purgeExpiredTrash(maxAgeMs = DocVault.TRASH_TTL_MS): Promise<VaultConfig> {
+    const cfg = await this.vault.readConfig();
+    const now = Date.now();
+    const keep: TrashEntry[] = [];
+    for (const entry of cfg.trash) {
+      if (now - new Date(entry.deletedAt).getTime() > maxAgeMs) {
+        await this.docs.purge(entry.trashPath).catch(() => {
+          /* already gone */
+        });
+      } else {
+        keep.push(entry);
+      }
+    }
+    if (keep.length === cfg.trash.length) return cfg;
+    return this.vault.updateConfig({ trash: keep });
+  }
+
+  /** Append a trash entry (most-recent first) to the persisted config. */
+  private async addTrashEntry(entry: TrashEntry): Promise<void> {
+    const cfg = await this.vault.readConfig();
+    await this.vault.updateConfig({ trash: [entry, ...cfg.trash] });
+  }
+
+  /** Re-index a restored doc, or every doc under a restored product folder. */
+  private async reindexUnder(relPath: string): Promise<void> {
+    const prefix = relPath.endsWith('/') ? relPath : `${relPath}/`;
+    for (const p of await this.docs.list()) {
+      if (p !== relPath && !p.startsWith(prefix)) continue;
+      try {
+        this.index.upsert(await this.docs.read(p));
+      } catch {
+        /* skip unreadable file */
+      }
+    }
   }
 
   /** Add an explicit outbound link from one doc to a target doc id. */
