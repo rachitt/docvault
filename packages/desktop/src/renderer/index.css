@@ -300,6 +300,10 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-flow-editor:focus {
   outline: none;
 }
+.dv-flow-canvas {
+  position: relative;
+  min-width: 100%;
+}
 .dv-flow-scroll-controls {
   position: sticky;
   top: 0.5rem;

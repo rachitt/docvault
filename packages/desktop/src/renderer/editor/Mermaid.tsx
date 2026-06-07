@@ -309,6 +309,7 @@ function FlowchartVisualEditor({
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollNode = useRef<string | null>(null);
 
   useEffect(() => {
     if (model && selectedEdge && !model.edges.some((edge) => edge.id === selectedEdge)) {
@@ -316,10 +317,26 @@ function FlowchartVisualEditor({
     }
   }, [model, selectedEdge]);
 
+  useEffect(() => {
+    const nodeId = pendingScrollNode.current;
+    if (!model || !nodeId) return;
+    const node = model.nodes.find((item) => item.id === nodeId);
+    const canvas = canvasRef.current;
+    if (!node || !canvas) return;
+    pendingScrollNode.current = null;
+    requestAnimationFrame(() => {
+      canvas.scrollTo({
+        left: Math.max(0, node.x - 80),
+        top: Math.max(0, node.y - 60),
+        behavior: 'smooth',
+      });
+    });
+  }, [model]);
+
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
-  const width = Math.max(520, ...model.nodes.map((node) => node.x + NODE_W + 60));
+  const width = Math.max(720, ...model.nodes.map((node) => node.x + NODE_W + 360));
   const height = Math.max(260, ...model.nodes.map((node) => node.y + NODE_H + 80));
   const scrollCanvas = (direction: -1 | 1): void => {
     canvasRef.current?.scrollBy({ left: direction * 280, behavior: 'smooth' });
@@ -367,6 +384,7 @@ function FlowchartVisualEditor({
       nodes: [...model.nodes, newNode],
       edges: [...model.edges, { id: `${from.id}-${id}-${model.edges.length}`, from: from.id, to: id }],
     };
+    pendingScrollNode.current = id;
     onChange(serializeFlowchart(next));
   };
 
@@ -407,7 +425,6 @@ function FlowchartVisualEditor({
     <div
       ref={canvasRef}
       className="dv-flow-editor"
-      style={{ minWidth: width, minHeight: height }}
       tabIndex={0}
       onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
       onPointerUp={() => setDrag(null)}
@@ -433,141 +450,143 @@ function FlowchartVisualEditor({
           <ChevronRight size={15} />
         </button>
       </div>
-      <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
-        <defs>
-          <marker id="dv-flow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L8,3 z" />
-          </marker>
-        </defs>
-        {model.edges.map((edge) => {
-          const from = nodeById.get(edge.from);
-          const to = nodeById.get(edge.to);
-          if (!from || !to) return null;
-          const x1 = from.x + NODE_W;
-          const y1 = from.y + NODE_H / 2;
-          const x2 = to.x;
-          const y2 = to.y + NODE_H / 2;
-          const midX = (x1 + x2) / 2;
-          const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
-          return (
-            <g key={edge.id}>
-              <path
-                className={`dv-flow-edge${selectedEdge === edge.id ? ' dv-flow-edge--selected' : ''}`}
-                d={path}
-                markerEnd="url(#dv-flow-arrow)"
-              />
-              <path
-                className="dv-flow-edge-hit"
-                d={path}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSelectedEdge(edge.id);
-                  canvasRef.current?.focus();
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSelectedEdge(edge.id);
-                  canvasRef.current?.focus();
-                }}
-              />
-              {edge.label ? (
-                <text className="dv-flow-edge-label" x={midX} y={(y1 + y2) / 2 - 8} textAnchor="middle">
-                  {edge.label}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-      {model.nodes.map((node) => (
-        <div
-          key={node.id}
-          className={`dv-flow-node dv-flow-node--${node.shape}${connectFrom === node.id ? ' dv-flow-node--connecting' : ''}${
-            connectFrom && connectFrom !== node.id ? ' dv-flow-node--targetable' : ''
-          }`}
-          style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
-        >
-          <button
-            type="button"
-            className="dv-flow-drag-handle"
-            title="Drag node"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setEditingNode(null);
-              setDrag({
-                nodeId: node.id,
-                startX: e.clientX,
-                startY: e.clientY,
-                originX: node.x,
-                originY: node.y,
-                model,
-              });
-            }}
+      <div className="dv-flow-canvas" style={{ width, height }}>
+        <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
+          <defs>
+            <marker id="dv-flow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" />
+            </marker>
+          </defs>
+          {model.edges.map((edge) => {
+            const from = nodeById.get(edge.from);
+            const to = nodeById.get(edge.to);
+            if (!from || !to) return null;
+            const x1 = from.x + NODE_W;
+            const y1 = from.y + NODE_H / 2;
+            const x2 = to.x;
+            const y2 = to.y + NODE_H / 2;
+            const midX = (x1 + x2) / 2;
+            const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+            return (
+              <g key={edge.id}>
+                <path
+                  className={`dv-flow-edge${selectedEdge === edge.id ? ' dv-flow-edge--selected' : ''}`}
+                  d={path}
+                  markerEnd="url(#dv-flow-arrow)"
+                />
+                <path
+                  className="dv-flow-edge-hit"
+                  d={path}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedEdge(edge.id);
+                    canvasRef.current?.focus();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedEdge(edge.id);
+                    canvasRef.current?.focus();
+                  }}
+                />
+                {edge.label ? (
+                  <text className="dv-flow-edge-label" x={midX} y={(y1 + y2) / 2 - 8} textAnchor="middle">
+                    {edge.label}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+        </svg>
+        {model.nodes.map((node) => (
+          <div
+            key={node.id}
+            className={`dv-flow-node dv-flow-node--${node.shape}${
+              connectFrom === node.id ? ' dv-flow-node--connecting' : ''
+            }${connectFrom && connectFrom !== node.id ? ' dv-flow-node--targetable' : ''}`}
+            style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
           >
-            <GripVertical size={13} />
-          </button>
-          <button
-            type="button"
-            className="dv-flow-connect-node"
-            title="Connect to existing node"
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingNode(null);
-              setSelectedEdge(null);
-              setConnectFrom(connectFrom === node.id ? null : node.id);
-              canvasRef.current?.focus();
-            }}
-          >
-            <Link2 size={12} />
-          </button>
-          <button
-            type="button"
-            className="dv-flow-add-node"
-            title="Add next step"
-            onClick={() => addNextStep(node)}
-          >
-            <Plus size={13} />
-          </button>
-          {editingNode === node.id ? (
-            <input
-              className="dv-flow-node-input"
-              value={draft}
-              autoFocus
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => commitLabel(node.id, draft)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitLabel(node.id, draft);
-                if (e.key === 'Escape') setEditingNode(null);
-              }}
-            />
-          ) : (
             <button
               type="button"
-              className="dv-flow-node-label"
-              title={connectFrom && connectFrom !== node.id ? 'Connect here' : 'Rename node'}
-              onClick={(e) => {
-                if (connectFrom && connectFrom !== node.id) {
-                  e.stopPropagation();
-                  connectToExistingNode(node.id);
-                  return;
-                }
-                if (connectFrom === node.id) {
-                  e.stopPropagation();
-                  setConnectFrom(null);
-                  return;
-                }
-                setDraft(node.label);
-                setEditingNode(node.id);
+              className="dv-flow-drag-handle"
+              title="Drag node"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setEditingNode(null);
+                setDrag({
+                  nodeId: node.id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  originX: node.x,
+                  originY: node.y,
+                  model,
+                });
               }}
             >
-              {node.label}
+              <GripVertical size={13} />
             </button>
-          )}
-        </div>
-      ))}
+            <button
+              type="button"
+              className="dv-flow-connect-node"
+              title="Connect to existing node"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingNode(null);
+                setSelectedEdge(null);
+                setConnectFrom(connectFrom === node.id ? null : node.id);
+                canvasRef.current?.focus();
+              }}
+            >
+              <Link2 size={12} />
+            </button>
+            <button
+              type="button"
+              className="dv-flow-add-node"
+              title="Add next step"
+              onClick={() => addNextStep(node)}
+            >
+              <Plus size={13} />
+            </button>
+            {editingNode === node.id ? (
+              <input
+                className="dv-flow-node-input"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => commitLabel(node.id, draft)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitLabel(node.id, draft);
+                  if (e.key === 'Escape') setEditingNode(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="dv-flow-node-label"
+                title={connectFrom && connectFrom !== node.id ? 'Connect here' : 'Rename node'}
+                onClick={(e) => {
+                  if (connectFrom && connectFrom !== node.id) {
+                    e.stopPropagation();
+                    connectToExistingNode(node.id);
+                    return;
+                  }
+                  if (connectFrom === node.id) {
+                    e.stopPropagation();
+                    setConnectFrom(null);
+                    return;
+                  }
+                  setDraft(node.label);
+                  setEditingNode(node.id);
+                }}
+              >
+                {node.label}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
