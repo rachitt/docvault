@@ -33,10 +33,12 @@ export function MainPane(): React.JSX.Element {
   const isEditableDoc = view === 'doc' && currentDoc && !currentDoc.frontmatter.source;
   const deskActive = document.documentElement.classList.contains('desk');
   const defaultPageBg = deskActive ? '#f4ecd6' : resolvedTheme === 'dark' ? '#202022' : '#ffffff';
-  const pageBg = isEditableDoc ? (currentDoc.frontmatter.pageBg ?? defaultPageBg) : undefined;
+  const customPageBg = isEditableDoc ? currentDoc.frontmatter.pageBg : undefined;
+  const pageBg = isEditableDoc ? (customPageBg ?? defaultPageBg) : undefined;
   const mainStyle = pageBg
     ? ({
         '--dv-page-bg': pageBg,
+        ...(customPageBg ? { '--dv-page-background': customPageBg } : {}),
         backgroundColor: pageBg,
       } as React.CSSProperties)
     : undefined;

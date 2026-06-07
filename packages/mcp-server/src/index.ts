@@ -149,6 +149,7 @@ async function main(): Promise<void> {
         title: z.string().optional(),
         tags: z.array(z.string()).optional(),
         status: statusEnum.optional(),
+        pageBg: z.string().nullable().optional(),
       },
     },
     tool(({ path: relPath, ...patch }) => dv.updateDoc(relPath, patch)),
