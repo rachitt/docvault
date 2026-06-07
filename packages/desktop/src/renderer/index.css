@@ -350,6 +350,17 @@ body {
 .dv-flow-node--round {
   border-radius: 999px;
 }
+.dv-flow-node--connecting {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dv-diagram-accent) 24%, transparent),
+    0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-flow-node--targetable {
+  border-style: dashed;
+}
+.dv-flow-node--targetable .dv-flow-node-label {
+  cursor: crosshair;
+}
 .dv-flow-drag-handle {
   position: absolute;
   top: 0.25rem;
@@ -372,6 +383,28 @@ body {
 .dv-flow-drag-handle:hover {
   background: var(--dv-sidebar);
   color: var(--dv-text);
+}
+.dv-flow-connect-node {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: crosshair;
+}
+.dv-flow-connect-node:hover,
+.dv-flow-node--connecting .dv-flow-connect-node {
+  background: var(--dv-sidebar);
+  color: var(--dv-diagram-accent);
 }
 .dv-flow-add-node {
   position: absolute;

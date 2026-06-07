@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
-import { Check, GripVertical, Pencil, Plus, Workflow } from 'lucide-react';
+import { Check, GripVertical, Link2, Pencil, Plus, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
@@ -307,6 +307,7 @@ function FlowchartVisualEditor({
   const [draft, setDraft] = useState('');
   const [drag, setDrag] = useState<DragState | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -366,6 +367,18 @@ function FlowchartVisualEditor({
     onChange(serializeFlowchart(next));
   };
 
+  const connectToExistingNode = (targetId: string): void => {
+    if (!connectFrom || connectFrom === targetId) return;
+    const edgeExists = model.edges.some((edge) => edge.from === connectFrom && edge.to === targetId);
+    setConnectFrom(null);
+    if (edgeExists) return;
+    const next = {
+      ...model,
+      edges: [...model.edges, { id: `${connectFrom}-${targetId}-${model.edges.length}`, from: connectFrom, to: targetId }],
+    };
+    onChange(serializeFlowchart(next));
+  };
+
   const deleteSelectedEdge = (): void => {
     if (!selectedEdge) return;
     const edgeToDelete = model.edges.find((edge) => edge.id === selectedEdge);
@@ -397,6 +410,11 @@ function FlowchartVisualEditor({
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}
       onKeyDown={(e) => {
+        if (connectFrom && e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          setConnectFrom(null);
+        }
         if (selectedEdge && (e.key === 'Delete' || e.key === 'Backspace')) {
           e.preventDefault();
           e.stopPropagation();
@@ -455,7 +473,9 @@ function FlowchartVisualEditor({
       {model.nodes.map((node) => (
         <div
           key={node.id}
-          className={`dv-flow-node dv-flow-node--${node.shape}`}
+          className={`dv-flow-node dv-flow-node--${node.shape}${connectFrom === node.id ? ' dv-flow-node--connecting' : ''}${
+            connectFrom && connectFrom !== node.id ? ' dv-flow-node--targetable' : ''
+          }`}
           style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
         >
           <button
@@ -477,6 +497,20 @@ function FlowchartVisualEditor({
             }}
           >
             <GripVertical size={13} />
+          </button>
+          <button
+            type="button"
+            className="dv-flow-connect-node"
+            title="Connect to existing node"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingNode(null);
+              setSelectedEdge(null);
+              setConnectFrom(connectFrom === node.id ? null : node.id);
+              canvasRef.current?.focus();
+            }}
+          >
+            <Link2 size={12} />
           </button>
           <button
             type="button"
@@ -502,8 +536,18 @@ function FlowchartVisualEditor({
             <button
               type="button"
               className="dv-flow-node-label"
-              title="Rename node"
-              onClick={() => {
+              title={connectFrom && connectFrom !== node.id ? 'Connect here' : 'Rename node'}
+              onClick={(e) => {
+                if (connectFrom && connectFrom !== node.id) {
+                  e.stopPropagation();
+                  connectToExistingNode(node.id);
+                  return;
+                }
+                if (connectFrom === node.id) {
+                  e.stopPropagation();
+                  setConnectFrom(null);
+                  return;
+                }
                 setDraft(node.label);
                 setEditingNode(node.id);
               }}
