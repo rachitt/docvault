@@ -1,4 +1,19 @@
 export { DocVault } from './docvault.js';
+export type { CreateDiagramInput } from './docvault.js';
+export {
+  validateMermaid,
+  detectDiagramType,
+  serializeMermaidFence,
+  listDiagramTemplates,
+  getDiagramTemplate,
+  DIAGRAM_TEMPLATES,
+} from './diagram.js';
+export type {
+  DiagramType,
+  DiagramIssue,
+  ValidateResult,
+  DiagramTemplate,
+} from './diagram.js';
 export { Vault } from './vault.js';
 export { DocStore, assertSafeSegment, parseDoc, serializeDoc, slugify } from './doc.js';
 export { Indexer, toFtsMatch } from './indexer.js';

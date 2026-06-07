@@ -4,14 +4,83 @@ import DOMPurify from 'dompurify';
 import { Check, Pencil, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
-let initialized = false;
+let initializedTheme: 'light' | 'dark' | null = null;
 let counter = 0;
 
+/**
+ * Brand-purple Mermaid theme (distinct from the blue UI accent) so diagrams read
+ * as their own kind of object. Applied at render time — never written into the
+ * stored markdown — so agent-authored ```mermaid blocks stay clean and pick up
+ * the theme automatically. Mirrors --dv-diagram-accent in index.css. Covers the
+ * common flowchart + sequence variables.
+ */
+const LIGHT_VARS = {
+  primaryColor: '#ede9fe',
+  primaryBorderColor: '#7c3aed',
+  primaryTextColor: '#312e81',
+  nodeTextColor: '#312e81',
+  lineColor: '#8b5cf6',
+  secondaryColor: '#f5f3ff',
+  tertiaryColor: '#faf5ff',
+  actorBkg: '#ede9fe',
+  actorBorder: '#7c3aed',
+  actorTextColor: '#312e81',
+  signalColor: '#6d28d9',
+  signalTextColor: '#312e81',
+  labelBoxBkgColor: '#ede9fe',
+  labelBoxBorderColor: '#7c3aed',
+  labelTextColor: '#312e81',
+  loopTextColor: '#312e81',
+  noteBkgColor: '#fef9c3',
+  noteBorderColor: '#eab308',
+  noteTextColor: '#422006',
+  fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+  fontSize: '14px',
+} as const;
+
+const DARK_VARS = {
+  darkMode: true,
+  background: '#1b1b1d',
+  primaryColor: '#3b2f63',
+  primaryBorderColor: '#a78bfa',
+  primaryTextColor: '#ede9fe',
+  nodeTextColor: '#ede9fe',
+  lineColor: '#a78bfa',
+  secondaryColor: '#2a2440',
+  tertiaryColor: '#241f38',
+  actorBkg: '#3b2f63',
+  actorBorder: '#a78bfa',
+  actorTextColor: '#ede9fe',
+  signalColor: '#c4b5fd',
+  signalTextColor: '#ede9fe',
+  labelBoxBkgColor: '#3b2f63',
+  labelBoxBorderColor: '#a78bfa',
+  labelTextColor: '#ede9fe',
+  loopTextColor: '#ede9fe',
+  noteBkgColor: '#3f3b1a',
+  noteBorderColor: '#a3812b',
+  noteTextColor: '#fef9c3',
+  fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+  fontSize: '14px',
+} as const;
+
 function ensureInit(): void {
-  if (initialized) return;
-  const dark = document.documentElement.classList.contains('dark');
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default' });
-  initialized = true;
+  const mode = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  // Re-initialize when the app theme flips so diagrams re-render in the right palette.
+  if (initializedTheme === mode) return;
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: 'base',
+    // Render labels as SVG <text>, not HTML in <foreignObject>. We sanitize the
+    // SVG with DOMPurify's svg-only profile before injecting it, which strips
+    // foreignObject HTML — so html labels would render as empty (invisible) text.
+    // SVG text survives the sanitizer and keeps the security posture intact.
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
+    themeVariables: mode === 'dark' ? DARK_VARS : LIGHT_VARS,
+  });
+  initializedTheme = mode;
 }
 
 function MermaidView({ code }: { code: string }): React.JSX.Element {

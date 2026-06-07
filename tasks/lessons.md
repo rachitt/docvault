@@ -2,8 +2,36 @@
 
 Append-only. Each entry: what went wrong → the fix. Read this at the start of each session.
 
+- **Diagrams must be high quality, always** (user is emphatic). A passing `validate_diagram`
+  is the floor, not the bar. Quality means: descriptive labels (not single abstract words),
+  no noisy self-loops/clutter, and pick a diagram type that *adds* a view rather than restating
+  another. For sequence diagrams use `autonumber`, `actor`/`participant` aliases, `opt`/`alt`
+  blocks, `activate`/`deactivate`, and `Note over` where they aid clarity. Don't dash off a
+  minimal diagram — design it.
+
+- **Keychain prompt on every launch = ad-hoc signature churn**: the app encrypts cookies
+  via the Keychain (`EnableCookieEncryption` fuse in `build/fuses.cjs`). macOS ties that grant
+  to the code signature, but local builds are ad-hoc (`identity: null`) so the fingerprint
+  changes every rebuild → "DocVault wants to use your confidential information…" re-prompts each
+  start. Fix: sign every build with one fixed self-signed cert. `pnpm --filter @docvault/desktop
+  dev-cert` creates it once; `reinstall.sh` then signs SRC with "DocVault Dev" automatically.
+- **Flowchart labels invisible = DOMPurify strips foreignObject**: Mermaid renders flowchart/class
+  node labels as HTML inside `<foreignObject>`, but `Mermaid.tsx` sanitizes with DOMPurify's
+  svg-only profile (`USE_PROFILES:{svg,svgFilters}`), which drops that HTML → shapes render, text
+  vanishes. Sequence diagrams use SVG `<text>` so they're unaffected. Fix: `mermaid.initialize({
+  htmlLabels:false, flowchart:{htmlLabels:false} })` so labels are SVG text that survives the
+  sanitizer — keeps the strict profile (no security loosening). Verify flowcharts, not just sequence.
+- **Mermaid renders tiny inside BlockNote** because `.bn-block-content` is `display:flex;width:100%`,
+  which shrinks the SVG to a sliver. Opt the block out: `.bn-block-content[data-content-type='mermaid']
+  { display:block }`, then size via `.dv-mermaid-svg { max-width:…; margin:0 auto }`. A standalone
+  CSS harness won't reveal this — must replicate BlockNote's wrapper.
 - **FTS5 + `snippet()`**: a contentless FTS5 table (`content=''`) can't produce snippets.
   Use a regular FTS5 table that stores the body (with a `doc_id UNINDEXED` column).
+- **Renderer can't value-import `@docvault/core`**: the barrel re-exports `DocVault` →
+  `doc.js` → `node:fs`, so a value import from `@docvault/core` breaks the browser bundle
+  ("readFile is not exported by __vite-browser-external"). Type-only imports are fine (erased).
+  For pure helpers the renderer needs (e.g. diagram templates), add a subpath `exports` entry in
+  core's package.json (`"./diagram"`) pointing at the fs-free module and import from there.
 - **chokidar `followSymlinks: false` breaks on macOS tmpdir**: `/var` is a symlink to
   `/private/var`, so watching a vault under `os.tmpdir()` silently emits no events with that flag.
   For symlink-escape safety, guard reads instead (canonicalize via `realpath` in `vault.abs()`),

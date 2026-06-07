@@ -124,7 +124,8 @@ async function main(): Promise<void> {
     'create_doc',
     {
       title: 'Create document',
-      description: 'Create a new markdown doc under a product. Returns the created doc.',
+      description:
+        'Create a new markdown doc under a product. Returns the created doc. To include a diagram, embed Mermaid in a ```mermaid fenced block in `content` — use list_diagram_templates / get_diagram_template for curated starting points and validate_diagram to check syntax first (or use create_diagram).',
       inputSchema: {
         product: slug.describe('Product slug, e.g. "superchat"'),
         title: nonEmpty,
@@ -140,7 +141,8 @@ async function main(): Promise<void> {
     'update_doc',
     {
       title: 'Update document',
-      description: 'Update a doc body and/or selected frontmatter fields by vault-relative path.',
+      description:
+        'Update a doc body and/or selected frontmatter fields by vault-relative path. To add or change a diagram, embed Mermaid in a ```mermaid fenced block in `content` (see list_diagram_templates / validate_diagram), or use create_diagram to append one.',
       inputSchema: {
         path: relPath.describe('Vault-relative path, e.g. docs/superchat/overview.md'),
         content: z.string().optional(),
@@ -262,6 +264,65 @@ async function main(): Promise<void> {
     },
     tool(({ slug: s, title, icon, color }) =>
       dv.createProduct(s, { title, ...(icon ? { icon } : {}), ...(color ? { color } : {}) }),
+    ),
+  );
+
+  // --- Diagrams ----------------------------------------------------------
+
+  server.registerTool(
+    'list_diagram_templates',
+    {
+      title: 'List diagram templates',
+      description:
+        'List curated Mermaid diagram templates (id, label, description, type) for flowcharts, mindmaps, sequence, class, state, ER, timeline, gantt, C4, and pie diagrams. Fetch a template body with get_diagram_template, then embed it in a ```mermaid block (or pass its id to create_diagram).',
+    },
+    tool(() => dv.listDiagramTemplates().map(({ source: _source, ...meta }) => meta)),
+  );
+
+  server.registerTool(
+    'get_diagram_template',
+    {
+      title: 'Get diagram template',
+      description: 'Get a single Mermaid diagram template, including its source, by id.',
+      inputSchema: { id: nonEmpty.describe('Template id from list_diagram_templates') },
+    },
+    tool(({ id }) => {
+      const tpl = dv.getDiagramTemplate(id);
+      if (!tpl) throw new Error(`Unknown diagram template: ${id}`);
+      return tpl;
+    }),
+  );
+
+  server.registerTool(
+    'validate_diagram',
+    {
+      title: 'Validate diagram',
+      description:
+        'Structurally lint Mermaid source before saving it into a doc. Catches empty diagrams, unrecognized diagram types, and unbalanced brackets/quotes, and returns the detected type plus any issues. Lightweight check only — final rendering is verified in the DocVault app.',
+      inputSchema: { code: nonEmpty.describe('Mermaid source (no fences)') },
+    },
+    tool(({ code }) => dv.validateDiagram(code)),
+  );
+
+  server.registerTool(
+    'create_diagram',
+    {
+      title: 'Create diagram',
+      description:
+        'Create a Mermaid diagram as a ```mermaid fenced block — either as a new doc (pass `product` + `title`) or appended to an existing doc (pass `path`). Provide `code` or a `template_id`. The source is validated first; lint errors are rejected.',
+      inputSchema: {
+        code: z.string().optional().describe('Mermaid source (no fences). Required unless template_id is given.'),
+        template_id: z.string().optional().describe('Template id (from list_diagram_templates) to use when code is omitted'),
+        heading: z.string().optional().describe('Optional "## heading" placed above the diagram'),
+        path: relPath.optional().describe('Append to this existing doc (vault-relative path) instead of creating one'),
+        product: slug.optional().describe('Product slug for a new doc (required unless path is given)'),
+        title: z.string().optional().describe('Title for a new doc (required unless path is given)'),
+        tags: z.array(z.string()).optional(),
+        status: statusEnum.optional(),
+      },
+    },
+    tool(({ template_id, ...rest }) =>
+      dv.createDiagram({ ...rest, ...(template_id ? { templateId: template_id } : {}) }),
     ),
   );
 
