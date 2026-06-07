@@ -303,6 +303,14 @@ function FlowchartVisualEditor({
   const [editingNode, setEditingNode] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (model && selectedEdge && !model.edges.some((edge) => edge.id === selectedEdge)) {
+      setSelectedEdge(null);
+    }
+  }, [model, selectedEdge]);
 
   if (!model) return null;
 
@@ -355,13 +363,30 @@ function FlowchartVisualEditor({
     onChange(serializeFlowchart(next));
   };
 
+  const deleteSelectedEdge = (): void => {
+    if (!selectedEdge) return;
+    const next = {
+      ...model,
+      edges: model.edges.filter((edge) => edge.id !== selectedEdge),
+    };
+    setSelectedEdge(null);
+    onChange(serializeFlowchart(next));
+  };
+
   return (
     <div
+      ref={canvasRef}
       className="dv-flow-editor"
       style={{ minWidth: width, minHeight: height }}
+      tabIndex={0}
       onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          deleteSelectedEdge();
+        }
+      }}
     >
       <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
         <defs>
@@ -378,12 +403,21 @@ function FlowchartVisualEditor({
           const x2 = to.x;
           const y2 = to.y + NODE_H / 2;
           const midX = (x1 + x2) / 2;
+          const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
           return (
             <g key={edge.id}>
               <path
-                className="dv-flow-edge"
-                d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+                className={`dv-flow-edge${selectedEdge === edge.id ? ' dv-flow-edge--selected' : ''}`}
+                d={path}
                 markerEnd="url(#dv-flow-arrow)"
+              />
+              <path
+                className="dv-flow-edge-hit"
+                d={path}
+                onClick={() => {
+                  setSelectedEdge(edge.id);
+                  canvasRef.current?.focus();
+                }}
               />
               {edge.label ? (
                 <text className="dv-flow-edge-label" x={midX} y={(y1 + y2) / 2 - 8} textAnchor="middle">

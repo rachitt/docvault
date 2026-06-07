@@ -294,6 +294,9 @@ body {
   background-size: 24px 24px;
   border-top: 1px solid var(--dv-border);
 }
+.dv-flow-editor:focus {
+  outline: none;
+}
 .dv-flow-edges {
   position: absolute;
   inset: 0;
@@ -304,6 +307,17 @@ body {
   fill: none;
   stroke: var(--dv-diagram-accent);
   stroke-width: 2;
+}
+.dv-flow-edge--selected {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--dv-diagram-accent) 42%, transparent));
+}
+.dv-flow-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  pointer-events: stroke;
 }
 .dv-flow-edges marker path {
   fill: var(--dv-diagram-accent);
