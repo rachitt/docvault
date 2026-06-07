@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
 import { Check, Pencil, Workflow } from 'lucide-react';
@@ -6,6 +6,112 @@ import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
 let counter = 0;
+
+type FlowNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  shape: 'rect' | 'decision' | 'round';
+};
+
+type FlowEdge = {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+};
+
+type FlowchartModel = {
+  direction: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+};
+
+const NODE_W = 132;
+const NODE_H = 54;
+const POS_RE = /^%%\s*dv-pos:\s*([A-Za-z][\w-]*)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
+const NODE_RE = /([A-Za-z][\w-]*)(?:\[(.*?)\]|\{(.*?)\}|\((.*?)\))?/g;
+const EDGE_RE = /^\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?\s*--(?:\|([^|]+)\|)?>\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?/;
+
+function escapeLabel(label: string): string {
+  return label.replace(/]/g, ')').replace(/}/g, ')').replace(/\n/g, ' ').trim() || 'Step';
+}
+
+function nodeSyntax(node: FlowNode): string {
+  const label = escapeLabel(node.label);
+  if (node.shape === 'decision') return `${node.id}{${label}}`;
+  if (node.shape === 'round') return `${node.id}(${label})`;
+  return `${node.id}[${label}]`;
+}
+
+function parseFlowchart(code: string): FlowchartModel | null {
+  const lines = code.split('\n');
+  const head = lines.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim();
+  const match = /^(?:flowchart|graph)\s+([A-Z]{2})/i.exec(head ?? '');
+  if (!match) return null;
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const nodes = new Map<string, Omit<FlowNode, 'x' | 'y'>>();
+  const edges: FlowEdge[] = [];
+
+  for (const line of lines) {
+    const pos = POS_RE.exec(line.trim());
+    if (pos) {
+      positions.set(pos[1] as string, { x: Number(pos[2]), y: Number(pos[3]) });
+      continue;
+    }
+
+    const edge = EDGE_RE.exec(line);
+    if (edge) {
+      const from = edge[1] as string;
+      const to = edge[3] as string;
+      const label = edge[2]?.trim();
+      edges.push({ id: `${from}-${to}-${edges.length}`, from, to, ...(label ? { label } : {}) });
+    }
+
+    NODE_RE.lastIndex = 0;
+    for (const node of line.matchAll(NODE_RE)) {
+      const id = node[1];
+      if (!id || /^(flowchart|graph)$/i.test(id)) continue;
+      const label = node[2] ?? node[3] ?? node[4] ?? id;
+      const shape = node[3] ? 'decision' : node[4] ? 'round' : 'rect';
+      if (!nodes.has(id)) nodes.set(id, { id, label, shape });
+    }
+  }
+
+  const laidOut = [...nodes.values()].map((node, i): FlowNode => {
+    const pos = positions.get(node.id);
+    return {
+      ...node,
+      x: pos?.x ?? 60 + (i % 3) * 185,
+      y: pos?.y ?? 70 + Math.floor(i / 3) * 120,
+    };
+  });
+
+  return {
+    direction: match[1] ?? 'TD',
+    nodes: laidOut,
+    edges,
+  };
+}
+
+function serializeFlowchart(model: FlowchartModel): string {
+  const byId = new Map(model.nodes.map((node) => [node.id, node]));
+  const lines = [`flowchart ${model.direction}`];
+  for (const node of model.nodes) lines.push(`%% dv-pos: ${node.id} ${Math.round(node.x)} ${Math.round(node.y)}`);
+  for (const edge of model.edges) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to) continue;
+    const label = edge.label ? `|${edge.label}|` : '';
+    lines.push(`  ${nodeSyntax(from)} --${label}> ${nodeSyntax(to)}`);
+  }
+  if (model.edges.length === 0) {
+    for (const node of model.nodes) lines.push(`  ${nodeSyntax(node)}`);
+  }
+  return lines.join('\n');
+}
 
 /**
  * Brand-purple Mermaid theme (distinct from the blue UI accent) so diagrams read
@@ -166,6 +272,102 @@ function MermaidView({ code }: { code: string }): React.JSX.Element {
   return <div className="dv-mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
+function FlowchartVisualEditor({
+  code,
+  onChange,
+}: {
+  code: string;
+  onChange: (next: string) => void;
+}): React.JSX.Element | null {
+  const model = useMemo(() => parseFlowchart(code), [code]);
+  const [editingNode, setEditingNode] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  if (!model) return null;
+
+  const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
+  const width = Math.max(520, ...model.nodes.map((node) => node.x + NODE_W + 60));
+  const height = Math.max(260, ...model.nodes.map((node) => node.y + NODE_H + 80));
+
+  const commitLabel = (nodeId: string, label: string): void => {
+    const next = {
+      ...model,
+      nodes: model.nodes.map((node) => (node.id === nodeId ? { ...node, label: escapeLabel(label) } : node)),
+    };
+    onChange(serializeFlowchart(next));
+    setEditingNode(null);
+  };
+
+  return (
+    <div className="dv-flow-editor" style={{ minWidth: width, minHeight: height }}>
+      <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
+        <defs>
+          <marker id="dv-flow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" />
+          </marker>
+        </defs>
+        {model.edges.map((edge) => {
+          const from = nodeById.get(edge.from);
+          const to = nodeById.get(edge.to);
+          if (!from || !to) return null;
+          const x1 = from.x + NODE_W;
+          const y1 = from.y + NODE_H / 2;
+          const x2 = to.x;
+          const y2 = to.y + NODE_H / 2;
+          const midX = (x1 + x2) / 2;
+          return (
+            <g key={edge.id}>
+              <path
+                className="dv-flow-edge"
+                d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+                markerEnd="url(#dv-flow-arrow)"
+              />
+              {edge.label ? (
+                <text className="dv-flow-edge-label" x={midX} y={(y1 + y2) / 2 - 8} textAnchor="middle">
+                  {edge.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+      {model.nodes.map((node) => (
+        <div
+          key={node.id}
+          className={`dv-flow-node dv-flow-node--${node.shape}`}
+          style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
+        >
+          {editingNode === node.id ? (
+            <input
+              className="dv-flow-node-input"
+              value={draft}
+              autoFocus
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => commitLabel(node.id, draft)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitLabel(node.id, draft);
+                if (e.key === 'Escape') setEditingNode(null);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="dv-flow-node-label"
+              title="Rename node"
+              onClick={() => {
+                setDraft(node.label);
+                setEditingNode(node.id);
+              }}
+            >
+              {node.label}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Mermaid diagram block. Renders the diagram from its `code` prop and lets the
  * user edit the source inline. Serialized to a ```mermaid fenced code block by
@@ -186,6 +388,7 @@ export const Mermaid = createReactBlockSpec(
       const [editing, setEditing] = useState(code.trim().length === 0);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       const [draft, setDraft] = useState(code);
+      const supportsVisualFlowchart = parseFlowchart(code) !== null;
 
       return (
         <div className="dv-mermaid" contentEditable={false}>
@@ -228,7 +431,16 @@ export const Mermaid = createReactBlockSpec(
               onBlur={() => editor.updateBlock(block, { props: { code: draft } })}
             />
           ) : (
-            <MermaidView code={code} />
+            <>
+              {supportsVisualFlowchart ? (
+                <FlowchartVisualEditor
+                  code={code}
+                  onChange={(next) => editor.updateBlock(block, { props: { code: next } })}
+                />
+              ) : (
+                <MermaidView code={code} />
+              )}
+            </>
           )}
         </div>
       );

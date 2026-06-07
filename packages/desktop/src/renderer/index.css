@@ -283,6 +283,84 @@ body {
   max-width: 100%;
   height: auto;
 }
+.dv-flow-editor {
+  position: relative;
+  overflow: auto;
+  padding: 1rem;
+  background:
+    linear-gradient(var(--dv-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dv-border) 1px, transparent 1px),
+    var(--dv-bg);
+  background-size: 24px 24px;
+  border-top: 1px solid var(--dv-border);
+}
+.dv-flow-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dv-flow-edge {
+  fill: none;
+  stroke: var(--dv-diagram-accent);
+  stroke-width: 2;
+}
+.dv-flow-edges marker path {
+  fill: var(--dv-diagram-accent);
+}
+.dv-flow-edge-label {
+  fill: var(--dv-muted);
+  font-size: 0.75rem;
+  paint-order: stroke;
+  stroke: var(--dv-bg);
+  stroke-width: 4px;
+}
+.dv-flow-node {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.5rem;
+  background: var(--dv-bg);
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-flow-node--decision {
+  transform: rotate(45deg);
+}
+.dv-flow-node--decision > * {
+  transform: rotate(-45deg);
+}
+.dv-flow-node--round {
+  border-radius: 999px;
+}
+.dv-flow-node-label {
+  width: 100%;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: text;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.dv-flow-node-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--dv-diagram-accent);
+  outline: none;
+  background: transparent;
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: center;
+}
 .dv-mermaid-empty {
   padding: 1rem;
   color: var(--dv-muted);
