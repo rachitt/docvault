@@ -7,7 +7,7 @@ import {
   type DefaultReactSuggestionItem,
 } from '@blocknote/react';
 import { filterSuggestionItems } from '@blocknote/core';
-import { AlertTriangle, Link2, Palette, RefreshCw, Star, Workflow } from 'lucide-react';
+import { AlertTriangle, Link2, RefreshCw, Star, Workflow } from 'lucide-react';
 import type { Doc } from '@docvault/core';
 import { listDiagramTemplates } from '@docvault/core/diagram';
 import { useStore } from '../store';
@@ -48,7 +48,13 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
   const defaultPageBg = deskActive ? '#f4ecd6' : resolvedTheme === 'dark' ? '#1b1b1d' : '#ffffff';
-  const pageBg = doc.frontmatter.pageBg ?? defaultPageBg;
+  const selectedPageBg = doc.frontmatter.pageBg ?? null;
+  const pageBg = selectedPageBg ?? defaultPageBg;
+  const pageBgOptions = [
+    { label: 'Default background', value: null, color: defaultPageBg },
+    { label: 'White background', value: '#ffffff', color: '#ffffff' },
+    { label: 'Black background', value: '#000000', color: '#000000' },
+  ] as const;
   const updateToolbarVisibility = useCallback(() => {
     try {
       document.documentElement.classList.toggle(
@@ -149,12 +155,8 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
     void saveCurrent(md);
   };
 
-  const previewPageBackground = (color: string): void => {
-    setCurrentDoc({ ...doc, frontmatter: { ...doc.frontmatter, pageBg: color } });
-  };
-
-  const setPageBackground = async (color: string): Promise<void> => {
-    previewPageBackground(color);
+  const setPageBackground = async (color: string | null): Promise<void> => {
+    setCurrentDoc({ ...doc, frontmatter: { ...doc.frontmatter, pageBg: color ?? undefined } });
     const saved = await window.docvault.updateDoc(doc.relPath, { pageBg: color });
     setCurrentDoc(saved);
   };
@@ -194,19 +196,25 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           >
             <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
           </button>
-          <label
-            title="Page background"
-            className="relative inline-flex cursor-pointer items-center rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          >
-            <Palette size={18} />
-            <input
-              type="color"
-              value={pageBg}
-              onInput={(e) => previewPageBackground(e.currentTarget.value)}
-              onChange={(e) => void setPageBackground(e.target.value)}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-          </label>
+          <div className="flex items-center gap-1" aria-label="Page background">
+            {pageBgOptions.map((option) => {
+              const selected = selectedPageBg === option.value;
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  title={option.label}
+                  aria-label={option.label}
+                  aria-pressed={selected}
+                  onClick={() => void setPageBackground(option.value)}
+                  className={`h-5 w-5 rounded border ${
+                    selected ? 'border-[var(--dv-accent)] ring-2 ring-[var(--dv-accent)]/30' : 'border-neutral-300'
+                  }`}
+                  style={{ backgroundColor: option.color }}
+                />
+              );
+            })}
+          </div>
         </div>
         <div className="mb-6 flex flex-wrap gap-1.5">
           {doc.frontmatter.tags.map((t) => (
