@@ -297,6 +297,9 @@ body {
 .dv-flow-editor:focus {
   outline: none;
 }
+html.dv-flow-active [role='toolbar'] {
+  display: none !important;
+}
 .dv-flow-edges {
   position: absolute;
   inset: 0;
