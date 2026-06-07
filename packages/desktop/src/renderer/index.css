@@ -336,6 +336,29 @@ body {
 .dv-flow-node--round {
   border-radius: 999px;
 }
+.dv-flow-drag-handle {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: grab;
+}
+.dv-flow-drag-handle:active {
+  cursor: grabbing;
+}
+.dv-flow-drag-handle:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
 .dv-flow-node-label {
   width: 100%;
   min-height: 1.5rem;

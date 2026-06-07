@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
-import { Check, Pencil, Workflow } from 'lucide-react';
+import { Check, GripVertical, Pencil, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
@@ -26,6 +26,15 @@ type FlowchartModel = {
   direction: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+};
+
+type DragState = {
+  nodeId: string;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  model: FlowchartModel;
 };
 
 const NODE_W = 132;
@@ -282,6 +291,7 @@ function FlowchartVisualEditor({
   const model = useMemo(() => parseFlowchart(code), [code]);
   const [editingNode, setEditingNode] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [drag, setDrag] = useState<DragState | null>(null);
 
   if (!model) return null;
 
@@ -298,8 +308,33 @@ function FlowchartVisualEditor({
     setEditingNode(null);
   };
 
+  const moveNode = (clientX: number, clientY: number): void => {
+    if (!drag) return;
+    const dx = clientX - drag.startX;
+    const dy = clientY - drag.startY;
+    const next = {
+      ...drag.model,
+      nodes: drag.model.nodes.map((node) =>
+        node.id === drag.nodeId
+          ? {
+              ...node,
+              x: Math.max(16, drag.originX + dx),
+              y: Math.max(16, drag.originY + dy),
+            }
+          : node,
+      ),
+    };
+    onChange(serializeFlowchart(next));
+  };
+
   return (
-    <div className="dv-flow-editor" style={{ minWidth: width, minHeight: height }}>
+    <div
+      className="dv-flow-editor"
+      style={{ minWidth: width, minHeight: height }}
+      onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
+      onPointerUp={() => setDrag(null)}
+      onPointerCancel={() => setDrag(null)}
+    >
       <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
         <defs>
           <marker id="dv-flow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
@@ -337,6 +372,26 @@ function FlowchartVisualEditor({
           className={`dv-flow-node dv-flow-node--${node.shape}`}
           style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
         >
+          <button
+            type="button"
+            className="dv-flow-drag-handle"
+            title="Drag node"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setEditingNode(null);
+              setDrag({
+                nodeId: node.id,
+                startX: e.clientX,
+                startY: e.clientY,
+                originX: node.x,
+                originY: node.y,
+                model,
+              });
+            }}
+          >
+            <GripVertical size={13} />
+          </button>
           {editingNode === node.id ? (
             <input
               className="dv-flow-node-input"
