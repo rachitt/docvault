@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_CONFIG, normalizeTrash, type VaultConfig } from './types.js';
 
@@ -38,6 +38,8 @@ export class Vault {
   private canonicalRootCache: string | null = null;
   /** Serializes config read-modify-write so in-process updates don't clobber. */
   private updateQueue: Promise<unknown> = Promise.resolve();
+  /** Monotonic counter for unique config temp-file names. */
+  private writeSeq = 0;
 
   constructor(root: string) {
     this.root = path.resolve(root);
@@ -135,10 +137,17 @@ export class Vault {
   async writeConfig(config: VaultConfig): Promise<void> {
     await mkdir(this.metaDir, { recursive: true });
     // Atomic write: a crash mid-write must not truncate/corrupt config.json.
-    // Write to a pid-scoped temp file, then rename (atomic on the same fs).
-    const tmp = `${this.configPath}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(config, null, 2), 'utf8');
-    await rename(tmp, this.configPath);
+    // Write to a unique temp file, then rename (atomic on the same fs). The name
+    // is unique per call (pid + counter) so a direct, off-queue caller can't race
+    // the same temp path; a failed rename cleans up its temp instead of leaking.
+    const tmp = `${this.configPath}.${process.pid}.${this.writeSeq++}.tmp`;
+    try {
+      await writeFile(tmp, JSON.stringify(config, null, 2), 'utf8');
+      await rename(tmp, this.configPath);
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw err;
+    }
   }
 
   /**
