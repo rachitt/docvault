@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
-import { Check, GripVertical, Pencil, Workflow } from 'lucide-react';
+import { Check, GripVertical, Pencil, Plus, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
@@ -120,6 +120,17 @@ function serializeFlowchart(model: FlowchartModel): string {
     for (const node of model.nodes) lines.push(`  ${nodeSyntax(node)}`);
   }
   return lines.join('\n');
+}
+
+function nextNodeId(nodes: FlowNode[]): string {
+  const used = new Set(nodes.map((node) => node.id));
+  for (let i = 0; i < 26; i++) {
+    const id = String.fromCharCode(65 + i);
+    if (!used.has(id)) return id;
+  }
+  let i = nodes.length + 1;
+  while (used.has(`N${i}`)) i++;
+  return `N${i}`;
 }
 
 /**
@@ -327,6 +338,23 @@ function FlowchartVisualEditor({
     onChange(serializeFlowchart(next));
   };
 
+  const addNextStep = (from: FlowNode): void => {
+    const id = nextNodeId(model.nodes);
+    const newNode: FlowNode = {
+      id,
+      label: 'Next step',
+      x: from.x + 190,
+      y: from.y,
+      shape: 'rect',
+    };
+    const next = {
+      ...model,
+      nodes: [...model.nodes, newNode],
+      edges: [...model.edges, { id: `${from.id}-${id}-${model.edges.length}`, from: from.id, to: id }],
+    };
+    onChange(serializeFlowchart(next));
+  };
+
   return (
     <div
       className="dv-flow-editor"
@@ -391,6 +419,14 @@ function FlowchartVisualEditor({
             }}
           >
             <GripVertical size={13} />
+          </button>
+          <button
+            type="button"
+            className="dv-flow-add-node"
+            title="Add next step"
+            onClick={() => addNextStep(node)}
+          >
+            <Plus size={13} />
           </button>
           {editingNode === node.id ? (
             <input

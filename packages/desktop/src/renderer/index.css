@@ -359,6 +359,29 @@ body {
   background: var(--dv-sidebar);
   color: var(--dv-text);
 }
+.dv-flow-add-node {
+  position: absolute;
+  top: 50%;
+  right: -0.75rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 999px;
+  background: var(--dv-bg);
+  color: var(--dv-diagram-accent);
+  cursor: pointer;
+  transform: translateY(-50%);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+.dv-flow-add-node:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
 .dv-flow-node-label {
   width: 100%;
   min-height: 1.5rem;
