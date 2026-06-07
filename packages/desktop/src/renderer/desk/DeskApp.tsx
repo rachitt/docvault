@@ -156,7 +156,6 @@ function DeskStatusBar(): React.JSX.Element {
 export default function DeskApp(): React.JSX.Element {
   const refresh = useStore((s) => s.refresh);
   const setPalette = useStore((s) => s.setPalette);
-  const applyTheme = useStore((s) => s.applyTheme);
   const loading = useStore((s) => s.loading);
   const error = useStore((s) => s.error);
   const config = useStore((s) => s.config);
@@ -165,10 +164,14 @@ export default function DeskApp(): React.JSX.Element {
   const openDoc = useStore((s) => s.openDoc);
   const didAutoOpen = useRef(false);
 
-  // Force the desk skin on; keep it winning regardless of the OS appearance.
+  // The desk skin is a single, always-light parchment theme: force `.desk` on
+  // and `.dark` off so the OS appearance never leaks a dark BlockNote palette
+  // under the light paper surface.
   useEffect(() => {
-    document.documentElement.classList.add('desk');
-    return () => document.documentElement.classList.remove('desk');
+    const el = document.documentElement;
+    el.classList.add('desk');
+    el.classList.remove('dark');
+    return () => el.classList.remove('desk');
   }, []);
 
   useEffect(() => {
@@ -181,16 +184,11 @@ export default function DeskApp(): React.JSX.Element {
       }
     };
     window.addEventListener('keydown', onKey);
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    const onScheme = () => applyTheme();
-    mql.addEventListener('change', onScheme);
-    applyTheme();
     return () => {
       off();
       window.removeEventListener('keydown', onKey);
-      mql.removeEventListener('change', onScheme);
     };
-  }, [refresh, setPalette, applyTheme]);
+  }, [refresh, setPalette]);
 
   // On first load, restore focus to the most-recently-edited doc instead of the
   // empty Home list — the desk should open to where you left off.

@@ -44,6 +44,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const conflictRef = useRef<Doc | null>(null);
 
   const starred = config?.starred.includes(doc.frontmatter.id) ?? false;
+  const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
 
@@ -180,7 +181,9 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
       <BlockNoteView
         editor={editor}
         onChange={onChange}
-        theme={resolvedTheme}
+        // The desk skin is always light parchment; force BlockNote's internal
+        // palette to light so it can't render dark menus/code under the paper.
+        theme={deskActive ? 'light' : resolvedTheme}
         slashMenu={false}
         className="bn-container"
       >
