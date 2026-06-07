@@ -144,7 +144,7 @@ export class DocStore {
   /** Update a doc's body and/or selected frontmatter fields in place. */
   async update(
     relPath: string,
-    patch: { content?: string; title?: string; tags?: string[]; status?: DocStatus },
+    patch: { content?: string; title?: string; tags?: string[]; status?: DocStatus; pageBg?: string | null },
   ): Promise<Doc> {
     const doc = await this.read(relPath);
     const next: Doc = {
@@ -155,6 +155,7 @@ export class DocStore {
         ...(patch.title ? { title: patch.title } : {}),
         ...(patch.tags ? { tags: patch.tags } : {}),
         ...(patch.status ? { status: patch.status } : {}),
+        ...(patch.pageBg !== undefined ? { pageBg: patch.pageBg ?? undefined } : {}),
       },
     };
     return this.write(next);

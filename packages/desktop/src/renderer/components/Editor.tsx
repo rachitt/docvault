@@ -7,7 +7,7 @@ import {
   type DefaultReactSuggestionItem,
 } from '@blocknote/react';
 import { filterSuggestionItems } from '@blocknote/core';
-import { AlertTriangle, Link2, RefreshCw, Star, Workflow } from 'lucide-react';
+import { AlertTriangle, Link2, Palette, RefreshCw, Star, Workflow } from 'lucide-react';
 import type { Doc } from '@docvault/core';
 import { listDiagramTemplates } from '@docvault/core/diagram';
 import { useStore } from '../store';
@@ -47,6 +47,8 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
+  const defaultPageBg = deskActive ? '#f4ecd6' : resolvedTheme === 'dark' ? '#1b1b1d' : '#ffffff';
+  const pageBg = doc.frontmatter.pageBg ?? defaultPageBg;
   const updateToolbarVisibility = useCallback(() => {
     try {
       document.documentElement.classList.toggle(
@@ -147,8 +149,14 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
     void saveCurrent(md);
   };
 
+  const setPageBackground = async (color: string): Promise<void> => {
+    const saved = await window.docvault.updateDoc(doc.relPath, { pageBg: color });
+    setCurrentDoc(saved);
+  };
+
   return (
-    <div className="mx-auto max-w-3xl px-12 py-10">
+    <div className="min-h-full" style={{ backgroundColor: pageBg }}>
+      <div className="mx-auto max-w-3xl px-12 py-10">
       {conflict && (
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
           <RefreshCw size={16} className="shrink-0" />
@@ -181,6 +189,18 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
         >
           <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
         </button>
+        <label
+          title="Page background"
+          className="relative inline-flex cursor-pointer items-center rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        >
+          <Palette size={18} />
+          <input
+            type="color"
+            value={pageBg}
+            onChange={(e) => void setPageBackground(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
       </div>
       <div className="mb-6 flex flex-wrap gap-1.5">
         {doc.frontmatter.tags.map((t) => (
@@ -213,6 +233,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           getItems={async (query) => wikilinkItems(editor, query, search, docs)}
         />
       </BlockNoteView>
+      </div>
     </div>
   );
 }

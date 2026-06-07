@@ -300,6 +300,35 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-flow-editor:focus {
   outline: none;
 }
+.dv-flow-scroll-controls {
+  position: sticky;
+  top: 0.5rem;
+  left: calc(100% - 5.25rem);
+  z-index: 4;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dv-bg) 88%, white);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.1);
+}
+.dv-flow-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+}
+.dv-flow-scroll-controls button:hover {
+  background: var(--dv-sidebar);
+}
 .dv-flow-edges {
   position: absolute;
   inset: 0;

@@ -15,6 +15,8 @@ export interface DocFrontmatter {
   links?: string[];
   /** For imported sources (pdf/docx/txt): relative path to the original file. */
   source?: string;
+  /** Optional per-document page background color. */
+  pageBg?: string;
 }
 
 /** A managed document: frontmatter + markdown body, plus its location. */

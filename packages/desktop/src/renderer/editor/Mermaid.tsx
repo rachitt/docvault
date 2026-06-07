@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
-import { Check, GripVertical, Link2, Pencil, Plus, Workflow } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, GripVertical, Link2, Pencil, Plus, Workflow } from 'lucide-react';
 import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
@@ -321,6 +321,9 @@ function FlowchartVisualEditor({
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
   const width = Math.max(520, ...model.nodes.map((node) => node.x + NODE_W + 60));
   const height = Math.max(260, ...model.nodes.map((node) => node.y + NODE_H + 80));
+  const scrollCanvas = (direction: -1 | 1): void => {
+    canvasRef.current?.scrollBy({ left: direction * 280, behavior: 'smooth' });
+  };
 
   const commitLabel = (nodeId: string, label: string): void => {
     const next = {
@@ -422,6 +425,14 @@ function FlowchartVisualEditor({
         }
       }}
     >
+      <div className="dv-flow-scroll-controls">
+        <button type="button" title="Scroll left" onClick={() => scrollCanvas(-1)}>
+          <ChevronLeft size={15} />
+        </button>
+        <button type="button" title="Scroll right" onClick={() => scrollCanvas(1)}>
+          <ChevronRight size={15} />
+        </button>
+      </div>
       <svg className="dv-flow-edges" width={width} height={height} aria-hidden="true">
         <defs>
           <marker id="dv-flow-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
