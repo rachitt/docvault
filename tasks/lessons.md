@@ -4,6 +4,13 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
 
 - **FTS5 + `snippet()`**: a contentless FTS5 table (`content=''`) can't produce snippets.
   Use a regular FTS5 table that stores the body (with a `doc_id UNINDEXED` column).
+- **chokidar `followSymlinks: false` breaks on macOS tmpdir**: `/var` is a symlink to
+  `/private/var`, so watching a vault under `os.tmpdir()` silently emits no events with that flag.
+  For symlink-escape safety, guard reads instead (canonicalize via `realpath` in `vault.abs()`),
+  not the watcher option.
+- **Path containment needs realpath, not just `..` checks**: a string-prefix check on a resolved
+  path misses a symlink *inside* the dir that points out. `vault.abs()` canonicalizes the longest
+  existing prefix and re-checks against `realpath(root)`.
 - **mammoth types**: `convertToMarkdown` isn't in the published TS types. Use
   `extractRawText` for the searchable sidecar.
 - **pnpm 11.5+ build approval**: native builds (better-sqlite3, esbuild) must be allowlisted

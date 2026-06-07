@@ -22,6 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.13.0",
     "chokidar": "^4.0.3",
     "docx-preview": "^0.3.7",
+    "dompurify": "^3.4.8",
     "electron-updater": "^6.8.9",
     "mermaid": "^11.15.0",
     "pdfjs-dist": "5.4.296",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@blocknote/core": "^0.25.1",
+    "@electron/fuses": "^1.8.0",
     "@blocknote/mantine": "^0.25.1",
     "@blocknote/react": "^0.25.1",
     "@tailwindcss/vite": "^4.0.0",

@@ -41,3 +41,17 @@ allowlisted in `pnpm-workspace.yaml > allowBuilds`.
 - Ask yourself : "Would a staff engineer approve this?"
 - When given a bug report : just fix it
 - For bugs, dont just scratch the surface. Dive into the root cause and start fixing from there.
+
+<!-- HELM:BEGIN (managed by Helm — safe to delete this block) -->
+## Helm task board
+
+This workspace is open in **Helm**, which shares a task board with you. Use it instead
+of your own internal todo list when the user mentions "tasks" or "the task list".
+
+- See the current tasks: run `mc list` (the `mc` command is already on your PATH).
+- Start a task: `mc start <id>`  ·  finish: `mc done <id>`  ·  defer: `mc later <id>`
+- Record progress / a blocker / a summary: `mc note <id> "..."`
+- Add a task: `mc add "title"`
+
+Full protocol is in `.mission-control/AGENTS.md`. Your `mc` changes appear in the Helm app within ~1s.
+<!-- HELM:END -->

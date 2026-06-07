@@ -10,6 +10,8 @@ export default defineConfig({
     // ulid's secure-crypto detection.
     plugins: [externalizeDepsPlugin()],
     build: {
+      // Don't ship source maps in production bundles (avoids leaking source).
+      sourcemap: false,
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') },
       },
@@ -18,6 +20,7 @@ export default defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
+      sourcemap: false,
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
         output: { format: 'cjs', entryFileNames: 'index.cjs' },
@@ -31,6 +34,7 @@ export default defineConfig({
       alias: { '@': resolve(__dirname, 'src/renderer') },
     },
     build: {
+      sourcemap: false,
       rollupOptions: { input: { index: resolve(__dirname, 'index.html') } },
     },
   },

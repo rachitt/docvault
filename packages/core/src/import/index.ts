@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ulid } from 'ulid';
 import { parseDoc, serializeDoc } from '../doc.js';
@@ -58,6 +58,13 @@ export async function importFile(
   const ext = path.extname(srcAbsPath).toLowerCase() as ImportableExt;
   const extractor = EXTRACTORS[ext];
   if (!extractor) throw new Error(`Unsupported file type: ${ext}`);
+
+  // The source path is caller-supplied (incl. via the MCP `import_file` tool, an
+  // otherwise-bounded interface). Reject symlinks and anything that isn't a
+  // regular file so a planted link can't make us copy `/etc/...` into the vault.
+  const st = await lstat(srcAbsPath);
+  if (st.isSymbolicLink()) throw new Error(`Refusing to import a symlink: ${srcAbsPath}`);
+  if (!st.isFile()) throw new Error(`Not a regular file: ${srcAbsPath}`);
 
   await mkdir(vault.assetsDir, { recursive: true });
   const baseName = path.basename(srcAbsPath);

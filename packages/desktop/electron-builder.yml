@@ -14,12 +14,25 @@ files:
   - out/**/*
   - package.json
   - '!**/*.map'
+# Harden the packaged Electron binary (disable RunAsNode / inspector / NODE_OPTIONS,
+# encrypt cookies). Runs before signing so the modified binary is what gets signed.
+afterPack: build/fuses.cjs
 mac:
   icon: build/icon.icns
   category: public.app-category.productivity
   # Unsigned for local `dir` builds. For a distributable, signed dmg + working
-  # auto-update, set identity to your Developer ID and notarize (see README).
+  # auto-update: set identity to your Developer ID (or export CSC_LINK/CSC_KEY_PASSWORD),
+  # flip `notarize` on, and export APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # (never commit these). hardenedRuntime + the entitlements below are required for
+  # notarization and are only applied when a signing identity is present.
   identity: null
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Set to { teamId: "$APPLE_TEAM_ID" } (or true) in the signed-release flow to
+  # notarize via notarytool; kept false so local unsigned `dir` builds don't try.
+  notarize: false
   target:
     - target: dir
       arch: arm64

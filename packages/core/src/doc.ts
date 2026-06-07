@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
@@ -178,6 +179,11 @@ export class DocStore {
   async restore(trashPath: string, relPath: string): Promise<void> {
     const from = this.vault.abs(trashPath);
     const to = this.vault.abs(relPath);
+    // Don't silently clobber a file/folder that now occupies the original path
+    // (e.g. a new doc created at the same slug after the delete).
+    if (existsSync(to)) {
+      throw new Error(`Cannot restore: a file already exists at ${relPath}`);
+    }
     await mkdir(path.dirname(to), { recursive: true });
     await rename(from, to);
   }
