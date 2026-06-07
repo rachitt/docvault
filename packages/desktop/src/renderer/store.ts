@@ -154,12 +154,11 @@ export const useStore = create<State>((set, get) => ({
     const cur = get().currentDoc;
     // If the open doc was the one trashed, drop back to Home.
     if (cur?.relPath === relPath) set({ currentDoc: null, view: 'home' });
-    const [docs, products, trash] = await Promise.all([
-      api().listDocs(),
-      api().listProducts(),
-      api().listTrash(),
-    ]);
-    set({ docs, products, trash });
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
   },
 
   deleteProduct: async (slug) => {
@@ -167,22 +166,20 @@ export const useStore = create<State>((set, get) => ({
     const cur = get().currentDoc;
     // If the open doc lived under this product, drop back to Home.
     if (cur && cur.relPath.startsWith(`docs/${slug}/`)) set({ currentDoc: null, view: 'home' });
-    const [docs, products, trash] = await Promise.all([
-      api().listDocs(),
-      api().listProducts(),
-      api().listTrash(),
-    ]);
-    set({ docs, products, trash });
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
   },
 
   restoreTrash: async (trashPath) => {
     await api().restoreTrash(trashPath);
-    const [docs, products, trash] = await Promise.all([
-      api().listDocs(),
-      api().listProducts(),
-      api().listTrash(),
-    ]);
-    set({ docs, products, trash });
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      trash: await api().listTrash(),
+    });
   },
 
   importFile: async () => {

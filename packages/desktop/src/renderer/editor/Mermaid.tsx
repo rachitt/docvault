@@ -117,11 +117,7 @@ function ensureInit(): void {
 function MermaidView({ code }: { code: string }): React.JSX.Element {
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // Stable id per component instance. (useId() is unsuitable: its ':' chars are
-  // invalid in the DOM id / selector mermaid derives from this value.) Lazy-init
-  // so the module counter advances once per instance, not on every render.
-  const idRef = useRef('');
-  if (!idRef.current) idRef.current = `dv-mermaid-${counter++}`;
+  const idRef = useRef(`dv-mermaid-${counter++}`);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,8 +126,6 @@ function MermaidView({ code }: { code: string }): React.JSX.Element {
       setError(null);
       return;
     }
-    // Drop any prior error so a now-valid diagram doesn't keep showing it.
-    setError(null);
     ensureInit();
     mermaid
       .render(idRef.current, code)

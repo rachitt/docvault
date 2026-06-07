@@ -61,22 +61,16 @@ function Shelf(): React.JSX.Element {
         <span className="desk-eyebrow">Spaces</span>
         <div className="desk-tabs">
           {products.map((p, i) => (
-            <button
-              type="button"
+            <div
               key={p.slug}
               className={`desk-tab ${TAB_COLORS[i % TAB_COLORS.length]}`}
               data-active={activeSlug === p.slug}
-              // Keep the bevel gradient even for a custom product color.
-              style={
-                p.color
-                  ? { background: `linear-gradient(180deg, color-mix(in srgb, ${p.color} 78%, white), ${p.color})` }
-                  : undefined
-              }
+              style={p.color ? { background: p.color } : undefined}
               onClick={() => openSpace(p.slug)}
               title={`${p.docCount} doc${p.docCount === 1 ? '' : 's'}`}
             >
               {p.title}
-            </button>
+            </div>
           ))}
           {adding ? (
             <input
@@ -95,15 +89,9 @@ function Shelf(): React.JSX.Element {
               }}
             />
           ) : (
-            <button
-              type="button"
-              className="desk-tab-add"
-              aria-label="New space"
-              title="New space"
-              onClick={() => setAdding(true)}
-            >
+            <div className="desk-tab-add" title="New space" onClick={() => setAdding(true)}>
               <Plus size={15} />
-            </button>
+            </div>
           )}
         </div>
       </div>
@@ -160,9 +148,7 @@ function DeskStatusBar(): React.JSX.Element {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <Check size={11} /> Index: Ready
       </span>
-      <button type="button" className="gear" aria-label="Settings" onClick={() => setView('settings')}>
-        <Gear size={13} />
-      </button>
+      <Gear className="gear" size={13} onClick={() => setView('settings')} />
     </div>
   );
 }
