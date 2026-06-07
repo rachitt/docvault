@@ -65,7 +65,10 @@ function parseFlowchart(code: string): FlowchartModel | null {
   const edges: FlowEdge[] = [];
 
   for (const line of lines) {
-    const pos = POS_RE.exec(line.trim());
+    const trimmed = line.trim();
+    if (/^(?:flowchart|graph)\s+[A-Z]{2}/i.test(trimmed)) continue;
+
+    const pos = POS_RE.exec(trimmed);
     if (pos) {
       positions.set(pos[1] as string, { x: Number(pos[2]), y: Number(pos[3]) });
       continue;
@@ -383,7 +386,9 @@ function FlowchartVisualEditor({
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}
       onKeyDown={(e) => {
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedEdge && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          e.stopPropagation();
           deleteSelectedEdge();
         }
       }}
@@ -414,7 +419,15 @@ function FlowchartVisualEditor({
               <path
                 className="dv-flow-edge-hit"
                 d={path}
-                onClick={() => {
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedEdge(edge.id);
+                  canvasRef.current?.focus();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   setSelectedEdge(edge.id);
                   canvasRef.current?.focus();
                 }}

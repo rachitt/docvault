@@ -236,12 +236,12 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
   {
     id: 'flowchart-basic',
     label: 'Flowchart',
-    description: 'Top-down process flow with labelled steps.',
+    description: 'Two connected steps to start a workflow.',
     type: 'flowchart',
     source: `flowchart TD
-  A[Start] --> B[Do the work]
-  B --> C[Review]
-  C --> D[Done]`,
+%% dv-pos: A 80 80
+%% dv-pos: B 300 80
+  A[Start] --> B[Next step]`,
   },
   {
     id: 'flowchart-decision',
