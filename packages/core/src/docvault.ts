@@ -221,10 +221,12 @@ export class DocVault {
     const relDir = `docs/${slug}`;
     const cfg = await this.readProductConfig(slug);
     const title = cfg.title ?? slug;
+    // Move to trash FIRST: if the folder is missing this throws before we touch
+    // the index, so a failed delete can't leave the index inconsistent.
+    const trashPath = await this.docs.trash(relDir);
     for (const d of this.index.listDocs({ product: slug })) {
       this.index.removeByPath(d.relPath);
     }
-    const trashPath = await this.docs.trash(relDir);
     await this.addTrashEntry({
       kind: 'product',
       relPath: relDir,
@@ -247,31 +249,38 @@ export class DocVault {
     if (!entry) throw new Error(`No trash entry: ${trashPath}`);
     await this.docs.restore(entry.trashPath, entry.relPath);
     await this.reindexUnder(entry.relPath);
-    await this.vault.updateConfig({ trash: cfg.trash.filter((e) => e.trashPath !== trashPath) });
+    // Functional filter so a concurrent trash() doesn't get clobbered.
+    await this.vault.updateConfig((c) => ({
+      trash: c.trash.filter((e) => e.trashPath !== trashPath),
+    }));
   }
 
   /** Permanently delete trash entries older than the retention window. */
   async purgeExpiredTrash(maxAgeMs = DocVault.TRASH_TTL_MS): Promise<VaultConfig> {
     const cfg = await this.vault.readConfig();
     const now = Date.now();
-    const keep: TrashEntry[] = [];
+    const purged = new Set<string>();
     for (const entry of cfg.trash) {
-      if (now - new Date(entry.deletedAt).getTime() > maxAgeMs) {
+      const deletedAt = new Date(entry.deletedAt).getTime();
+      // An unparseable timestamp (NaN) would otherwise live forever — treat it
+      // as expired so corrupt entries don't become permanent zombies.
+      if (Number.isNaN(deletedAt) || now - deletedAt > maxAgeMs) {
         await this.docs.purge(entry.trashPath).catch(() => {
           /* already gone */
         });
-      } else {
-        keep.push(entry);
+        purged.add(entry.trashPath);
       }
     }
-    if (keep.length === cfg.trash.length) return cfg;
-    return this.vault.updateConfig({ trash: keep });
+    if (purged.size === 0) return cfg;
+    // Filter against a fresh read so a concurrently-added entry isn't dropped.
+    return this.vault.updateConfig((c) => ({
+      trash: c.trash.filter((e) => !purged.has(e.trashPath)),
+    }));
   }
 
   /** Append a trash entry (most-recent first) to the persisted config. */
   private async addTrashEntry(entry: TrashEntry): Promise<void> {
-    const cfg = await this.vault.readConfig();
-    await this.vault.updateConfig({ trash: [entry, ...cfg.trash] });
+    await this.vault.updateConfig((cfg) => ({ trash: [entry, ...cfg.trash] }));
   }
 
   /** Re-index a restored doc, or every doc under a restored product folder. */
@@ -379,17 +388,20 @@ export class DocVault {
   }
 
   async toggleStar(docId: string): Promise<boolean> {
-    const cfg = await this.vault.readConfig();
-    const has = cfg.starred.includes(docId);
-    const starred = has ? cfg.starred.filter((x) => x !== docId) : [...cfg.starred, docId];
-    await this.vault.updateConfig({ starred });
-    return !has;
+    // Functional update so a concurrent star/pushRecent doesn't clobber the
+    // array; derive the result from the committed config so it's race-free.
+    const next = await this.vault.updateConfig((cfg) => ({
+      starred: cfg.starred.includes(docId)
+        ? cfg.starred.filter((x) => x !== docId)
+        : [...cfg.starred, docId],
+    }));
+    return next.starred.includes(docId);
   }
 
   async pushRecent(docId: string, max = 20): Promise<void> {
-    const cfg = await this.vault.readConfig();
-    const recent = [docId, ...cfg.recent.filter((x) => x !== docId)].slice(0, max);
-    await this.vault.updateConfig({ recent });
+    await this.vault.updateConfig((cfg) => ({
+      recent: [docId, ...cfg.recent.filter((x) => x !== docId)].slice(0, max),
+    }));
   }
 
   // --- Watching ----------------------------------------------------------
