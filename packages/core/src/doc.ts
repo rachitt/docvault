@@ -47,6 +47,7 @@ export function parseDoc(raw: string, vault: Vault, absPath: string): Doc {
     updated: fm.updated ?? nowIso(),
     ...(fm.links ? { links: fm.links.map(String) } : {}),
     ...(fm.source ? { source: String(fm.source) } : {}),
+    ...(typeof fm.pageBg === 'string' ? { pageBg: fm.pageBg } : {}),
   };
   return {
     frontmatter,
