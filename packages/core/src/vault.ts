@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_CONFIG, normalizeTrash, type VaultConfig } from './types.js';
 
@@ -34,6 +34,12 @@ function canonicalize(target: string): string {
  */
 export class Vault {
   readonly root: string;
+  /** Cached symlink-resolved root; the vault dir doesn't move during a process. */
+  private canonicalRootCache: string | null = null;
+  /** Serializes config read-modify-write so in-process updates don't clobber. */
+  private updateQueue: Promise<unknown> = Promise.resolve();
+  /** Monotonic counter for unique config temp-file names. */
+  private writeSeq = 0;
 
   constructor(root: string) {
     this.root = path.resolve(root);
@@ -63,13 +69,16 @@ export class Vault {
     return path.join(this.metaDir, 'config.json');
   }
 
-  /** Canonical (symlink-resolved) vault root, used for containment checks. */
+  /** Canonical (symlink-resolved) vault root, used for containment checks.
+   *  Memoized — `abs()` is hot (one call per read/write/list element). */
   private get canonicalRoot(): string {
+    if (this.canonicalRootCache !== null) return this.canonicalRootCache;
     try {
-      return realpathSync(this.root);
+      this.canonicalRootCache = realpathSync(this.root);
     } catch {
-      return this.root;
+      this.canonicalRootCache = this.root;
     }
+    return this.canonicalRootCache;
   }
 
   /**
@@ -127,13 +136,41 @@ export class Vault {
 
   async writeConfig(config: VaultConfig): Promise<void> {
     await mkdir(this.metaDir, { recursive: true });
-    await writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf8');
+    // Atomic write: a crash mid-write must not truncate/corrupt config.json.
+    // Write to a unique temp file, then rename (atomic on the same fs). The name
+    // is unique per call (pid + counter) so a direct, off-queue caller can't race
+    // the same temp path; a failed rename cleans up its temp instead of leaking.
+    const tmp = `${this.configPath}.${process.pid}.${this.writeSeq++}.tmp`;
+    try {
+      await writeFile(tmp, JSON.stringify(config, null, 2), 'utf8');
+      await rename(tmp, this.configPath);
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw err;
+    }
   }
 
-  /** Apply a partial update to the config and persist it. */
-  async updateConfig(patch: Partial<VaultConfig>): Promise<VaultConfig> {
-    const next = { ...(await this.readConfig()), ...patch };
-    await this.writeConfig(next);
-    return next;
+  /**
+   * Apply an update to the config and persist it. The patch may be a partial
+   * object or an updater function that receives the freshly-read config — use
+   * the function form for any read-modify-write on an array field (e.g. trash,
+   * starred, recent) so concurrent in-process updates don't clobber each other.
+   *
+   * Updates are serialized within this process; cross-process writes to the
+   * shared vault remain last-writer-wins by design.
+   */
+  async updateConfig(
+    patch: Partial<VaultConfig> | ((cfg: VaultConfig) => Partial<VaultConfig>),
+  ): Promise<VaultConfig> {
+    const run = this.updateQueue.then(async () => {
+      const current = await this.readConfig();
+      const resolved = typeof patch === 'function' ? patch(current) : patch;
+      const next = { ...current, ...resolved };
+      await this.writeConfig(next);
+      return next;
+    });
+    // Keep the chain alive even if one write rejects.
+    this.updateQueue = run.catch(() => undefined);
+    return run;
   }
 }

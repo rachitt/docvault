@@ -126,6 +126,41 @@ describe('DocVault core', () => {
     expect(await dv.listTrash()).toHaveLength(0);
   });
 
+  it('purges trash entries with an unparseable deletedAt instead of leaving zombies', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Corrupt', content: 'broken' });
+    await dv.trashDoc(doc.relPath);
+    // Corrupt the timestamp on disk, then purge with the normal (long) TTL.
+    const cfgPath = path.join(root, '.docvault', 'config.json');
+    const cfg = JSON.parse(await readFile(cfgPath, 'utf8'));
+    cfg.trash[0].deletedAt = 'not-a-date';
+    await writeFile(cfgPath, JSON.stringify(cfg), 'utf8');
+    await dv.purgeExpiredTrash();
+    expect(await dv.listTrash()).toHaveLength(0);
+  });
+
+  it('concurrent config updates do not clobber each other', async () => {
+    const a = await dv.createDoc({ product: 'p', title: 'A', content: 'a' });
+    const b = await dv.createDoc({ product: 'p', title: 'B', content: 'b' });
+    // Fire star toggles + a recent push together: a naive read-modify-write
+    // would lose one; the serialized functional update must keep both stars.
+    await Promise.all([
+      dv.toggleStar(a.frontmatter.id),
+      dv.toggleStar(b.frontmatter.id),
+      dv.pushRecent(a.frontmatter.id),
+    ]);
+    const cfg = await dv.readConfig();
+    expect(cfg.starred).toContain(a.frontmatter.id);
+    expect(cfg.starred).toContain(b.frontmatter.id);
+    expect(cfg.recent).toContain(a.frontmatter.id);
+  });
+
+  it('deleting a non-existent product fails before mutating the index', async () => {
+    const doc = await dv.createDoc({ product: 'keep', title: 'Keep', content: 'safe' });
+    await expect(dv.deleteProduct('ghost')).rejects.toThrow();
+    // The unrelated product's doc is still indexed (no partial mutation).
+    expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+  });
+
   describe('path containment', () => {
     it('rejects reading outside the vault via ..', async () => {
       await writeFile(path.join(root, 'secret.txt'), 'top secret', 'utf8');
