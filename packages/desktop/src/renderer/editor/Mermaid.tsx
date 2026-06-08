@@ -358,6 +358,7 @@ function FlowchartVisualEditor({
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
+  const supportsDecisionNodes = model.nodes.some((node) => node.shape === 'decision');
   const width = Math.max(720, ...model.nodes.map((node) => node.x + nodeSize(node).width + 360));
   const height = Math.max(260, ...model.nodes.map((node) => node.y + nodeSize(node).height + 80));
   const scrollCanvas = (direction: -1 | 1): void => {
@@ -584,6 +585,10 @@ function FlowchartVisualEditor({
               aria-expanded={addMenuFor === node.id}
               onClick={(e) => {
                 e.stopPropagation();
+                if (!supportsDecisionNodes) {
+                  addNextStep(node, 'rect');
+                  return;
+                }
                 toggleAddMenu(node.id);
               }}
             >
@@ -594,9 +599,11 @@ function FlowchartVisualEditor({
                 <button type="button" role="menuitem" onClick={() => addNextStep(node, 'rect')}>
                   <Square size={13} /> Node
                 </button>
-                <button type="button" role="menuitem" onClick={() => addNextStep(node, 'decision')}>
-                  <Diamond size={13} /> Decision
-                </button>
+                {supportsDecisionNodes ? (
+                  <button type="button" role="menuitem" onClick={() => addNextStep(node, 'decision')}>
+                    <Diamond size={13} /> Decision
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {editingNode === node.id ? (
