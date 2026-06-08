@@ -249,10 +249,10 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
     description: 'Branching flow with a yes/no decision node.',
     type: 'flowchart',
     source: `flowchart TD
-%% dv-pos: A 70 110
-%% dv-pos: B 300 85
-%% dv-pos: C 540 55
-%% dv-pos: D 540 165
+%% dv-pos: A 300 40
+%% dv-pos: B 310 150
+%% dv-pos: C 210 310
+%% dv-pos: D 420 310
   A[Start] --> B{Decision?}
   B -->|Yes| C[Yes]
   B -->|No| D[No]`,
