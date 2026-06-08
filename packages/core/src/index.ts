@@ -43,6 +43,7 @@ export type {
 } from './diagram.js';
 export { Vault } from './vault.js';
 export { DocStore, assertSafeSegment, parseDoc, serializeDoc, slugify } from './doc.js';
+export { VersionStore } from './version.js';
 export { Indexer, toFtsMatch } from './indexer.js';
 export type { StoredChunk, SemanticHit, HybridHit } from './indexer.js';
 export { VaultWatcher } from './watcher.js';

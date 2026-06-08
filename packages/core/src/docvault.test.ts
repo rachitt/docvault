@@ -98,6 +98,62 @@ describe('DocVault core', () => {
     expect(dv.search({ query: 'photosynthesis' })).toHaveLength(1);
   });
 
+  it('creates an initial document version and can read it back', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Versioned', content: 'first body' });
+    const versions = await dv.listVersions(doc.frontmatter.id);
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({
+      docId: doc.frontmatter.id,
+      relPath: doc.relPath,
+      title: 'Versioned',
+      reason: 'create',
+    });
+    const snapshot = await dv.readVersion(doc.frontmatter.id, versions[0]!.id);
+    expect(snapshot.content).toContain('first body');
+  });
+
+  it('dedupes automatic versions but allows manual snapshots', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Manual', content: 'same body' });
+    await dv.updateDoc(doc.relPath, { content: 'same body' });
+    expect(await dv.listVersions(doc.frontmatter.id)).toHaveLength(1);
+
+    const manual = await dv.saveVersion(doc.frontmatter.id);
+    expect(manual?.reason).toBe('manual');
+    const versions = await dv.listVersions(doc.frontmatter.id);
+    expect(versions).toHaveLength(2);
+    expect(versions[0]?.manual).toBe(true);
+  });
+
+  it('snapshots the previous state before later edits', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'History', content: 'first body' });
+    await dv.updateDoc(doc.relPath, { content: 'second body' });
+    await dv.updateDoc(doc.relPath, { content: 'third body' });
+    const versions = await dv.listVersions(doc.frontmatter.id);
+    expect(versions).toHaveLength(2);
+    const bodies = await Promise.all(
+      versions.map((v) => dv.readVersion(doc.frontmatter.id, v.id).then((d) => d.content)),
+    );
+    expect(bodies.join('\n')).toContain('first body');
+    expect(bodies.join('\n')).toContain('second body');
+  });
+
+  it('restores a version and snapshots the current live doc first', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Restore Me', content: 'original body' });
+    await dv.updateDoc(doc.relPath, { content: 'edited body' });
+    const [original] = await dv.listVersions(doc.frontmatter.id);
+    const restored = await dv.restoreVersion(doc.frontmatter.id, original!.id);
+
+    expect(restored.content).toContain('original body');
+    expect(dv.search({ query: 'edited' })).toHaveLength(0);
+    expect(dv.search({ query: 'original' })).toHaveLength(1);
+
+    const versions = await dv.listVersions(doc.frontmatter.id);
+    const bodies = await Promise.all(
+      versions.map((v) => dv.readVersion(doc.frontmatter.id, v.id).then((d) => d.content)),
+    );
+    expect(bodies.join('\n')).toContain('edited body');
+  });
+
   it('soft-deletes a doc: removed from index, moved under trash/', async () => {
     const doc = await dv.createDoc({ product: 'p', title: 'Temp', content: 'disposable' });
     await dv.trashDoc(doc.relPath);

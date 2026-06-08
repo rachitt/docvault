@@ -41,6 +41,36 @@ export interface DocMeta {
   source: string | null;
 }
 
+export const DOC_VERSION_REASONS = ['create', 'edit', 'external', 'restore', 'import', 'manual'] as const;
+export type DocVersionReason = (typeof DOC_VERSION_REASONS)[number];
+
+export const DOC_VERSION_ACTORS = ['core', 'desktop', 'mcp', 'watcher'] as const;
+export type DocVersionActor = (typeof DOC_VERSION_ACTORS)[number];
+
+/** A persisted point-in-time copy of a markdown doc. */
+export interface DocVersion {
+  /** Snapshot id (ULID), unique within the doc's version folder. */
+  id: string;
+  /** Stable document id from frontmatter. */
+  docId: string;
+  /** Live vault-relative path when the snapshot was created. */
+  relPath: string;
+  /** Title when the snapshot was created. */
+  title: string;
+  /** ISO timestamp for when this snapshot was created. */
+  createdAt: string;
+  /** Why the snapshot was made. */
+  reason: DocVersionReason;
+  /** Which integration path caused the snapshot. */
+  actor: DocVersionActor;
+  /** SHA-256 hash of the raw markdown stored in the snapshot. */
+  contentHash: string;
+  /** Snapshot markdown size in bytes. */
+  sizeBytes: number;
+  /** True when the user explicitly requested or pinned the version. */
+  manual: boolean;
+}
+
 export interface SearchHit extends DocMeta {
   /** FTS snippet with matched terms highlighted using «» markers. */
   snippet: string;

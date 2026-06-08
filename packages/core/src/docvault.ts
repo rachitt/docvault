@@ -27,6 +27,9 @@ import {
 import type {
   Doc,
   DocMeta,
+  DocVersion,
+  DocVersionActor,
+  DocVersionReason,
   DocStatus,
   Product,
   SearchHit,
@@ -36,6 +39,7 @@ import type {
 } from './types.js';
 import { Vault } from './vault.js';
 import { VaultWatcher, type VaultChange } from './watcher.js';
+import { VersionStore } from './version.js';
 
 /** Input for {@link DocVault.createDiagram}. */
 export interface CreateDiagramInput {
@@ -92,6 +96,7 @@ export class DocVault {
   readonly index: Indexer;
   readonly embedder: Embedder;
   readonly templates: TemplateStore;
+  readonly versions: VersionStore;
   private watcher: VaultWatcher | null = null;
 
   /**
@@ -109,6 +114,7 @@ export class DocVault {
     this.index = new Indexer(vault);
     this.embedder = embedder;
     this.templates = new TemplateStore(vault);
+    this.versions = new VersionStore(vault);
   }
 
   /** Open (creating if needed) a vault rooted at `root` and build its index. */
@@ -386,6 +392,7 @@ export class DocVault {
     const doc = await this.docs.create(input);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
+    await this.versions.create({ relPath: doc.relPath, reason: 'create' });
     return doc;
   }
 
@@ -393,10 +400,61 @@ export class DocVault {
     relPath: string,
     patch: Parameters<DocStore['update']>[1],
   ): Promise<Doc> {
+    await this.versions.create({ relPath, reason: 'edit' }).catch(() => undefined);
     const doc = await this.docs.update(relPath, patch);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
     return doc;
+  }
+
+  async listVersions(idOrPath: string): Promise<DocVersion[]> {
+    const doc = await this.readDoc(idOrPath);
+    return this.versions.list(doc.frontmatter.id);
+  }
+
+  readVersion(docId: string, versionId: string): Promise<Doc> {
+    return this.versions.read(docId, versionId);
+  }
+
+  async saveVersion(
+    idOrPath: string,
+    opts: { reason?: DocVersionReason; actor?: DocVersionActor; manual?: boolean } = {},
+  ): Promise<DocVersion | null> {
+    const doc = await this.readDoc(idOrPath);
+    return this.versions.create({
+      relPath: doc.relPath,
+      reason: opts.reason ?? 'manual',
+      ...(opts.actor ? { actor: opts.actor } : {}),
+      manual: opts.manual ?? true,
+    });
+  }
+
+  async restoreVersion(docId: string, versionId: string): Promise<Doc> {
+    const current = this.index.getById(docId);
+    const versions = await this.versions.list(docId);
+    const selected = versions.find((v) => v.id === versionId);
+    const targetRelPath = current?.relPath ?? selected?.relPath;
+    if (!targetRelPath) throw new Error(`No version target for doc: ${docId}`);
+    if (current) {
+      await this.versions
+        .create({ relPath: current.relPath, reason: 'restore' })
+        .catch(() => undefined);
+    }
+    const snapshot = await this.versions.read(docId, versionId);
+    const restored: Doc = {
+      ...snapshot,
+      relPath: targetRelPath,
+      absPath: this.vault.abs(targetRelPath),
+      frontmatter: { ...snapshot.frontmatter, id: docId },
+    };
+    const saved = await this.docs.write(restored);
+    this.index.upsert(saved);
+    this.enqueueEmbed(saved.frontmatter.id, saved.content);
+    return saved;
+  }
+
+  deleteVersion(docId: string, versionId: string): Promise<void> {
+    return this.versions.delete(docId, versionId);
   }
 
   /** Soft-delete a single doc: move it to trash and drop it from the index. */
@@ -521,6 +579,7 @@ export class DocVault {
     const result = await importFile(this.vault, srcAbsPath, opts);
     this.index.upsert(result.doc);
     this.enqueueEmbed(result.doc.frontmatter.id, result.doc.content);
+    await this.versions.create({ relPath: result.doc.relPath, reason: 'import' });
     return result.doc;
   }
 
@@ -684,7 +743,12 @@ export class DocVault {
         if (id) {
           this.docs
             .read(c.relPath)
-            .then((doc) => this.enqueueEmbed(id, doc.content))
+            .then(async (doc) => {
+              this.enqueueEmbed(id, doc.content);
+              await this.versions
+                .create({ relPath: c.relPath, reason: 'external', actor: 'watcher' })
+                .catch(() => undefined);
+            })
             .catch(() => undefined);
         }
       }
