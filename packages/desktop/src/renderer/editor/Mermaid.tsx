@@ -1379,6 +1379,7 @@ function SequenceVisualEditor({
   const [lifelineDrag, setLifelineDrag] = useState<SequenceLifelineDragState | null>(null);
   const [colorParticipant, setColorParticipant] = useState<string | null>(null);
   const [selectedLifeline, setSelectedLifeline] = useState<string | null>(null);
+  const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   if (!model) return null;
@@ -1477,8 +1478,21 @@ function SequenceVisualEditor({
     };
     setSelectedLifeline(null);
     setColorParticipant(null);
+    setConnectFrom(null);
     setDrag(null);
     setLifelineDrag(null);
+    onChange(serializeSequence(next));
+  };
+
+  const addInteraction = (targetId: string): void => {
+    if (!connectFrom || connectFrom === targetId) return;
+    const next = {
+      ...model,
+      messages: [...model.messages, { from: connectFrom, to: targetId, arrow: '->>', label: 'Interaction' }],
+    };
+    setConnectFrom(null);
+    setSelectedLifeline(null);
+    setColorParticipant(null);
     onChange(serializeSequence(next));
   };
 
@@ -1500,6 +1514,11 @@ function SequenceVisualEditor({
         setLifelineDrag(null);
       }}
       onKeyDown={(e) => {
+        if (connectFrom && e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          setConnectFrom(null);
+        }
         if (selectedLifeline && (e.key === 'Delete' || e.key === 'Backspace')) {
           e.preventDefault();
           e.stopPropagation();
@@ -1547,13 +1566,22 @@ function SequenceVisualEditor({
                   onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (connectFrom && connectFrom !== participant.id) {
+                      return;
+                    }
                     setColorParticipant(null);
+                    setConnectFrom(null);
                     setSelectedLifeline(participant.id);
                     canvasRef.current?.focus();
                   }}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (connectFrom && connectFrom !== participant.id) {
+                      addInteraction(participant.id);
+                      return;
+                    }
+                    setConnectFrom(null);
                     setSelectedLifeline(participant.id);
                     canvasRef.current?.focus();
                   }}
@@ -1600,7 +1628,9 @@ function SequenceVisualEditor({
         {model.participants.map((participant, i) => (
           <div
             key={participant.id}
-            className="dv-sequence-node"
+            className={`dv-sequence-node${
+              connectFrom === participant.id ? ' dv-sequence-node--connecting' : ''
+            }${connectFrom && connectFrom !== participant.id ? ' dv-sequence-node--targetable' : ''}`}
             style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
           >
             <button
@@ -1613,6 +1643,7 @@ function SequenceVisualEditor({
                 setColorParticipant(null);
                 setLifelineDrag(null);
                 setSelectedLifeline(null);
+                setConnectFrom(null);
                 setDrag({
                   participantId: participant.id,
                   startX: e.clientX,
@@ -1632,10 +1663,25 @@ function SequenceVisualEditor({
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedLifeline(null);
+                setConnectFrom(null);
                 setColorParticipant(colorParticipant === participant.id ? null : participant.id);
               }}
             >
               <span style={{ background: participant.color }} />
+            </button>
+            <button
+              type="button"
+              className="dv-sequence-connect-button"
+              title="Add interaction arrow"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLifeline(null);
+                setColorParticipant(null);
+                setConnectFrom(connectFrom === participant.id ? null : participant.id);
+                canvasRef.current?.focus();
+              }}
+            >
+              <Link2 size={11} />
             </button>
             {colorParticipant === participant.id ? (
               <div className="dv-sequence-colors" aria-label="Participant colors">
@@ -1651,7 +1697,24 @@ function SequenceVisualEditor({
                 ))}
               </div>
             ) : null}
-            <span className="dv-sequence-node-label">{participant.label}</span>
+            <button
+              type="button"
+              className="dv-sequence-node-label"
+              title={connectFrom && connectFrom !== participant.id ? 'Connect interaction here' : participant.label}
+              onClick={(e) => {
+                if (connectFrom && connectFrom !== participant.id) {
+                  e.stopPropagation();
+                  addInteraction(participant.id);
+                  return;
+                }
+                if (connectFrom === participant.id) {
+                  e.stopPropagation();
+                  setConnectFrom(null);
+                }
+              }}
+            >
+              {participant.label}
+            </button>
           </div>
         ))}
         {model.participants.map((participant) => (
@@ -1671,6 +1734,7 @@ function SequenceVisualEditor({
               setDrag(null);
               setColorParticipant(null);
               setSelectedLifeline(participant.id);
+              setConnectFrom(null);
               canvasRef.current?.focus();
               setLifelineDrag({
                 participantId: participant.id,

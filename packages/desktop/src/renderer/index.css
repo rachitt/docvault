@@ -891,6 +891,14 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
   color: var(--dv-text);
   box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
 }
+.dv-sequence-node--connecting {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dv-diagram-accent) 24%, transparent),
+    0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-sequence-node--targetable {
+  border-style: dashed;
+}
 .dv-sequence-drag-handle {
   position: absolute;
   top: 0.2rem;
@@ -935,6 +943,27 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
   border: 1px solid currentColor;
   border-radius: 999px;
 }
+.dv-sequence-connect-button {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: crosshair;
+}
+.dv-sequence-connect-button:hover,
+.dv-sequence-node--connecting .dv-sequence-connect-button {
+  background: var(--dv-sidebar);
+  color: var(--dv-diagram-accent);
+}
 .dv-sequence-colors {
   position: absolute;
   top: calc(100% + 0.35rem);
@@ -962,11 +991,19 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
 .dv-sequence-node-label {
   display: block;
   width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: inherit;
+  cursor: default;
+  font: inherit;
   font-size: 0.82rem;
   line-height: 1.15;
   text-align: center;
   overflow-wrap: anywhere;
+}
+.dv-sequence-node--targetable .dv-sequence-node-label {
+  cursor: crosshair;
 }
 .dv-mermaid-empty {
   padding: 1rem;
