@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
-import { Check, ChevronLeft, ChevronRight, GripVertical, Link2, Pencil, Plus, Workflow } from 'lucide-react';
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Diamond,
+  GripVertical,
+  Link2,
+  Pencil,
+  Plus,
+  Square,
+  Workflow,
+} from 'lucide-react';
 import mermaid from 'mermaid';
 
 let initializedTheme: 'light' | 'dark' | 'desk' | null = null;
@@ -28,6 +39,8 @@ type FlowchartModel = {
   edges: FlowEdge[];
 };
 
+type FlowNodeShape = FlowNode['shape'];
+
 type DragState = {
   nodeId: string;
   startX: number;
@@ -41,7 +54,8 @@ const NODE_W = 132;
 const NODE_H = 54;
 const POS_RE = /^%%\s*dv-pos:\s*([A-Za-z][\w-]*)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
 const NODE_RE = /([A-Za-z][\w-]*)(?:\[(.*?)\]|\{(.*?)\}|\((.*?)\))?/g;
-const EDGE_RE = /^\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?\s*--(?:\|([^|]+)\|)?>\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?/;
+const EDGE_RE =
+  /^\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?\s*--(?:(?:\|([^|]+)\|>)|(?:>\s*\|([^|]+)\|)|>)\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?/;
 
 function escapeLabel(label: string): string {
   return label.replace(/]/g, ')').replace(/}/g, ')').replace(/\n/g, ' ').trim() || 'Step';
@@ -77,13 +91,14 @@ function parseFlowchart(code: string): FlowchartModel | null {
     const edge = EDGE_RE.exec(line);
     if (edge) {
       const from = edge[1] as string;
-      const to = edge[3] as string;
-      const label = edge[2]?.trim();
+      const to = edge[4] as string;
+      const label = (edge[2] ?? edge[3])?.trim();
       edges.push({ id: `${from}-${to}-${edges.length}`, from, to, ...(label ? { label } : {}) });
     }
 
+    const nodeSource = line.replace(/--(?:\|[^|]*\|>|>\s*\|[^|]*\|)/g, '-->');
     NODE_RE.lastIndex = 0;
-    for (const node of line.matchAll(NODE_RE)) {
+    for (const node of nodeSource.matchAll(NODE_RE)) {
       const id = node[1];
       if (!id || /^(flowchart|graph)$/i.test(id)) continue;
       const label = node[2] ?? node[3] ?? node[4] ?? id;
@@ -117,7 +132,7 @@ function serializeFlowchart(model: FlowchartModel): string {
     const to = byId.get(edge.to);
     if (!from || !to) continue;
     const label = edge.label ? `|${edge.label}|` : '';
-    lines.push(`  ${nodeSyntax(from)} --${label}> ${nodeSyntax(to)}`);
+    lines.push(`  ${nodeSyntax(from)} -->${label} ${nodeSyntax(to)}`);
   }
   if (model.edges.length === 0) {
     for (const node of model.nodes) lines.push(`  ${nodeSyntax(node)}`);
@@ -308,6 +323,7 @@ function FlowchartVisualEditor({
   const [drag, setDrag] = useState<DragState | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [addMenuFor, setAddMenuFor] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollNode = useRef<string | null>(null);
 
@@ -370,20 +386,23 @@ function FlowchartVisualEditor({
     onChange(serializeFlowchart(next));
   };
 
-  const addNextStep = (from: FlowNode): void => {
+  const addNextStep = (from: FlowNode, shape: FlowNodeShape): void => {
     const id = nextNodeId(model.nodes);
+    const outgoing = model.edges.filter((edge) => edge.from === from.id).length;
+    const branchOffset = from.shape === 'decision' ? (outgoing % 2 === 0 ? -70 - outgoing * 18 : 70 + outgoing * 18) : 0;
     const newNode: FlowNode = {
       id,
-      label: 'Next step',
+      label: shape === 'decision' ? 'Decision?' : 'Next step',
       x: from.x + 190,
-      y: from.y,
-      shape: 'rect',
+      y: Math.max(16, from.y + branchOffset),
+      shape,
     };
     const next = {
       ...model,
       nodes: [...model.nodes, newNode],
       edges: [...model.edges, { id: `${from.id}-${id}-${model.edges.length}`, from: from.id, to: id }],
     };
+    setAddMenuFor(null);
     pendingScrollNode.current = id;
     onChange(serializeFlowchart(next));
   };
@@ -419,6 +438,13 @@ function FlowchartVisualEditor({
     };
     setSelectedEdge(null);
     onChange(serializeFlowchart(next));
+  };
+
+  const toggleAddMenu = (nodeId: string): void => {
+    setEditingNode(null);
+    setSelectedEdge(null);
+    setConnectFrom(null);
+    setAddMenuFor((current) => (current === nodeId ? null : nodeId));
   };
 
   return (
@@ -545,10 +571,24 @@ function FlowchartVisualEditor({
               type="button"
               className="dv-flow-add-node"
               title="Add next step"
-              onClick={() => addNextStep(node)}
+              aria-expanded={addMenuFor === node.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleAddMenu(node.id);
+              }}
             >
               <Plus size={13} />
             </button>
+            {addMenuFor === node.id ? (
+              <div className="dv-flow-add-menu" role="menu" aria-label="Add flowchart node">
+                <button type="button" role="menuitem" onClick={() => addNextStep(node, 'rect')}>
+                  <Square size={13} /> Node
+                </button>
+                <button type="button" role="menuitem" onClick={() => addNextStep(node, 'decision')}>
+                  <Diamond size={13} /> Decision
+                </button>
+              </div>
+            ) : null}
             {editingNode === node.id ? (
               <input
                 className="dv-flow-node-input"

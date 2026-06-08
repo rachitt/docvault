@@ -465,6 +465,37 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   background: var(--dv-sidebar);
   color: var(--dv-text);
 }
+.dv-flow-add-menu {
+  position: absolute;
+  top: calc(50% + 1.25rem);
+  right: -0.75rem;
+  z-index: 4;
+  display: grid;
+  min-width: 7.25rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 45%, transparent);
+  border-radius: 0.375rem;
+  background: var(--dv-bg);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.dv-flow-add-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+.dv-flow-add-menu button:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-diagram-accent);
+}
 .dv-flow-node-label {
   width: 100%;
   min-height: 1.5rem;

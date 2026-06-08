@@ -235,13 +235,17 @@ export function serializeMermaidFence(code: string): string {
 export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
   {
     id: 'flowchart-basic',
-    label: 'Flowchart',
-    description: 'Two connected steps to start a workflow.',
+    label: 'Decision flowchart',
+    description: 'A simple branching workflow with one decision point.',
     type: 'flowchart',
     source: `flowchart TD
-%% dv-pos: A 80 80
-%% dv-pos: B 300 80
-  A[Start] --> B[Next step]`,
+%% dv-pos: A 70 120
+%% dv-pos: B 280 120
+%% dv-pos: C 500 60
+%% dv-pos: D 500 180
+  A[Start] --> B{Decision?}
+  B -->|Yes| C[Yes path]
+  B -->|No| D[No path]`,
   },
   {
     id: 'flowchart-decision',
