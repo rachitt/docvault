@@ -282,6 +282,24 @@ function layoutMindmapNodes(nodes: MindmapNode[], positions: Map<string, { x: nu
   });
 }
 
+function orderedMindmapNodes(nodes: MindmapNode[]): MindmapNode[] {
+  const childrenByParent = new Map<string | null, MindmapNode[]>();
+  for (const node of nodes) {
+    const siblings = childrenByParent.get(node.parentId) ?? [];
+    siblings.push(node);
+    childrenByParent.set(node.parentId, siblings);
+  }
+
+  const ordered: MindmapNode[] = [];
+  const visit = (node: MindmapNode): void => {
+    ordered.push(node);
+    for (const child of childrenByParent.get(node.id) ?? []) visit(child);
+  };
+
+  for (const root of childrenByParent.get(null) ?? []) visit(root);
+  return ordered;
+}
+
 function parseMindmap(code: string): MindmapModel | null {
   const lines = code.split('\n');
   const head = lines.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim();
@@ -323,12 +341,15 @@ function parseMindmap(code: string): MindmapModel | null {
 }
 
 function serializeMindmap(model: MindmapModel): string {
+  const nodes = orderedMindmapNodes(model.nodes);
   const lines = ['mindmap'];
-  for (const node of model.nodes) lines.push(`%% dv-mm-pos: ${node.id} ${Math.round(node.x)} ${Math.round(node.y)}`);
-  for (const node of model.nodes) {
-    if (node.color !== defaultMindmapColor(node.depth)) lines.push(`%% dv-mm-color: ${node.id} ${node.color}`);
+  for (const [i, node] of nodes.entries()) {
+    lines.push(`%% dv-mm-pos: m${i} ${Math.round(node.x)} ${Math.round(node.y)}`);
   }
-  for (const node of model.nodes) {
+  for (const [i, node] of nodes.entries()) {
+    if (node.color !== defaultMindmapColor(node.depth)) lines.push(`%% dv-mm-color: m${i} ${node.color}`);
+  }
+  for (const node of nodes) {
     const indent = '  '.repeat(node.depth + 1);
     const label = escapeMindmapLabel(node.label);
     lines.push(node.depth === 0 ? `${indent}root((${label}))` : `${indent}${label}`);
@@ -867,7 +888,14 @@ function MindmapVisualEditor({
   const [draft, setDraft] = useState('');
   const [drag, setDrag] = useState<MindmapDragState | null>(null);
   const [colorNode, setColorNode] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (model && selectedEdge && !model.nodes.some((node) => node.id === selectedEdge && node.parentId)) {
+      setSelectedEdge(null);
+    }
+  }, [model, selectedEdge]);
 
   if (!model) return null;
 
@@ -914,6 +942,40 @@ function MindmapVisualEditor({
     setColorNode(null);
   };
 
+  const addChildNode = (parent: MindmapNode): void => {
+    const childCount = model.nodes.filter((node) => node.parentId === parent.id).length;
+    const size = mindmapNodeSize({ depth: parent.depth + 1 });
+    const parentSize = mindmapNodeSize(parent);
+    const angle = childCount === 0 ? Math.PI / 2 : Math.PI / 2 + (childCount % 2 === 0 ? -1 : 1) * Math.ceil(childCount / 2) * 0.55;
+    const distance = parent.depth === 0 ? 150 : 115;
+    const parentCenterX = parent.x + parentSize / 2;
+    const parentCenterY = parent.y + parentSize / 2;
+    const newNode: MindmapNode = {
+      id: `m${model.nodes.length}`,
+      label: 'New idea',
+      parentId: parent.id,
+      depth: parent.depth + 1,
+      x: Math.max(16, parentCenterX + Math.cos(angle) * distance - size / 2),
+      y: Math.max(16, parentCenterY + Math.sin(angle) * distance - size / 2),
+      color: defaultMindmapColor(parent.depth + 1),
+    };
+    onChange(serializeMindmap({ nodes: [...model.nodes, newNode] }));
+  };
+
+  const deleteSelectedEdge = (): void => {
+    if (!selectedEdge) return;
+    const removeIds = new Set<string>();
+    const collect = (nodeId: string): void => {
+      removeIds.add(nodeId);
+      for (const child of model.nodes.filter((node) => node.parentId === nodeId)) collect(child.id);
+    };
+    collect(selectedEdge);
+    setSelectedEdge(null);
+    setColorNode(null);
+    setEditingNode(null);
+    onChange(serializeMindmap({ nodes: model.nodes.filter((node) => !removeIds.has(node.id)) }));
+  };
+
   return (
     <div
       ref={canvasRef}
@@ -922,6 +984,13 @@ function MindmapVisualEditor({
       onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}
+      onKeyDown={(e) => {
+        if (selectedEdge && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteSelectedEdge();
+        }
+      }}
     >
       <div className="dv-mindmap-scroll-controls" aria-label="Scroll mindmap">
         <button type="button" title="Scroll up" onClick={() => scrollCanvas(0, -220)}>
@@ -949,12 +1018,34 @@ function MindmapVisualEditor({
             const y1 = parent.y + parentSize / 2;
             const x2 = node.x + nodeSize / 2;
             const y2 = node.y + nodeSize / 2;
+            const path = `M ${x1} ${y1} L ${x2} ${y2}`;
             return (
-              <path
-                key={`${node.parentId}-${node.id}`}
-                className="dv-mindmap-edge"
-                d={`M ${x1} ${y1} L ${x2} ${y2}`}
-              />
+              <g key={`${node.parentId}-${node.id}`}>
+                <path
+                  className={`dv-mindmap-edge${selectedEdge === node.id ? ' dv-mindmap-edge--selected' : ''}`}
+                  d={path}
+                />
+                <path
+                  className="dv-mindmap-edge-hit"
+                  d={path}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedEdge(node.id);
+                    setColorNode(null);
+                    setEditingNode(null);
+                    canvasRef.current?.focus();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedEdge(node.id);
+                    setColorNode(null);
+                    setEditingNode(null);
+                    canvasRef.current?.focus();
+                  }}
+                />
+              </g>
             );
           })}
         </svg>
@@ -975,6 +1066,7 @@ function MindmapVisualEditor({
                 e.currentTarget.setPointerCapture(e.pointerId);
                 setEditingNode(null);
                 setColorNode(null);
+                setSelectedEdge(null);
                 setDrag({
                   nodeId: node.id,
                   startX: e.clientX,
@@ -994,6 +1086,7 @@ function MindmapVisualEditor({
               onClick={(e) => {
                 e.stopPropagation();
                 setEditingNode(null);
+                setSelectedEdge(null);
                 setColorNode(colorNode === node.id ? null : node.id);
               }}
             >
@@ -1013,6 +1106,20 @@ function MindmapVisualEditor({
                 ))}
               </div>
             ) : null}
+            <button
+              type="button"
+              className="dv-mindmap-add-node"
+              title="Add child idea"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingNode(null);
+                setColorNode(null);
+                setSelectedEdge(null);
+                addChildNode(node);
+              }}
+            >
+              <Plus size={12} />
+            </button>
             {editingNode === node.id ? (
               <input
                 className="dv-mindmap-node-input"
@@ -1033,6 +1140,7 @@ function MindmapVisualEditor({
                 onClick={() => {
                   setDraft(node.label);
                   setColorNode(null);
+                  setSelectedEdge(null);
                   setEditingNode(node.id);
                 }}
               >
