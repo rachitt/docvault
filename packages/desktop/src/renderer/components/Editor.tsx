@@ -47,14 +47,19 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
+  // Show the inline formatting toolbar for any text-bearing block (paragraphs,
+  // headings, lists, quotes, callouts…) but hide it over blocks where inline
+  // styling is meaningless — diagrams and code. A denylist keeps formatting
+  // working for every standard/custom text block instead of paragraphs alone.
   const updateToolbarVisibility = useCallback(() => {
     try {
+      const type = editor.getTextCursorPosition().block.type;
       document.documentElement.classList.toggle(
-        'dv-paragraph-toolbar-active',
-        editor.getTextCursorPosition().block.type === 'paragraph',
+        'dv-text-toolbar-active',
+        type !== 'mermaid' && type !== 'codeBlock',
       );
     } catch {
-      document.documentElement.classList.remove('dv-paragraph-toolbar-active');
+      document.documentElement.classList.remove('dv-text-toolbar-active');
     }
   }, [editor]);
 
@@ -81,7 +86,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
-      document.documentElement.classList.remove('dv-paragraph-toolbar-active');
+      document.documentElement.classList.remove('dv-text-toolbar-active');
     };
   }, []);
 

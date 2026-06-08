@@ -283,7 +283,7 @@ body {
   max-width: 100%;
   height: auto;
 }
-html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
+html:not(.dv-text-toolbar-active) [role='toolbar'] {
   display: none !important;
 }
 .dv-flow-editor {

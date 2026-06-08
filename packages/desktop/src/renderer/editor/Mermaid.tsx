@@ -86,6 +86,15 @@ const MINDMAP_POS_RE = /^%%\s*dv-mm-pos:\s*(m\d+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?
 const MINDMAP_COLOR_RE = /^%%\s*dv-mm-color:\s*(m\d+)\s+(#[0-9a-fA-F]{6})\s*$/;
 const MINDMAP_COLORS = ['#0ea5d7', '#087fb1', '#ffffff', '#f3f4f6', '#fff1d8', '#f5e9ff'] as const;
 
+// A flowchart line the visual editor can fully round-trip: a single node, or a
+// single `A --> B` / `A -->|label| B` edge (with our supported shapes). Anything
+// richer (subgraphs, classDef/style, alt arrows like `-.->`/`==>`, chained edges,
+// exotic node shapes) deliberately fails these so we fall back to read-only
+// rendering instead of silently rewriting — and discarding — the user's source.
+const FLOW_NODE_TOKEN = String.raw`[A-Za-z][\w-]*(?:\[[^\]]*\]|\{[^}]*\}|\([^)]*\))?`;
+const FLOW_EDGE_LINE = new RegExp(`^${FLOW_NODE_TOKEN}\\s*-->(?:\\|[^|]*\\|)?\\s*${FLOW_NODE_TOKEN}\\s*;?$`);
+const FLOW_NODE_LINE = new RegExp(`^${FLOW_NODE_TOKEN}\\s*;?$`);
+
 function escapeLabel(label: string): string {
   return label.replace(/]/g, ')').replace(/}/g, ')').replace(/\n/g, ' ').trim() || 'Step';
 }
@@ -193,6 +202,23 @@ function parseFlowchart(code: string): FlowchartModel | null {
     nodes: laidOut,
     edges,
   };
+}
+
+// True only when every meaningful line is something the visual editor can
+// serialize back without loss. Guards against the visual editor clobbering rich
+// flowcharts (subgraphs, styling, alternate arrows/shapes) the model can't hold.
+function flowchartFullyRepresentable(code: string): boolean {
+  let sawHeader = false;
+  for (const raw of code.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('%%')) continue;
+    if (/^(?:flowchart|graph)\s+[A-Za-z]{2}\s*;?$/i.test(line)) {
+      sawHeader = true;
+      continue;
+    }
+    if (!FLOW_EDGE_LINE.test(line) && !FLOW_NODE_LINE.test(line)) return false;
+  }
+  return sawHeader;
 }
 
 function cleanMindmapLabel(raw: string): string {
@@ -340,6 +366,18 @@ function parseMindmap(code: string): MindmapModel | null {
   return nodes.length ? { nodes: layoutMindmapNodes(nodes, positions) } : null;
 }
 
+// The mindmap model is plain text + hierarchy, so `::icon(...)` and `:::class`
+// markers can't be round-tripped. Fall back to read-only rendering rather than
+// dropping them when the user next edits.
+function mindmapFullyRepresentable(code: string): boolean {
+  for (const raw of code.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('%%') || /^mindmap\b/i.test(line)) continue;
+    if (line.includes('::')) return false;
+  }
+  return true;
+}
+
 function serializeMindmap(model: MindmapModel): string {
   const nodes = orderedMindmapNodes(model.nodes);
   const lines = ['mindmap'];
@@ -361,15 +399,19 @@ function serializeFlowchart(model: FlowchartModel): string {
   const byId = new Map(model.nodes.map((node) => [node.id, node]));
   const lines = [`flowchart ${model.direction}`];
   for (const node of model.nodes) lines.push(`%% dv-pos: ${node.id} ${Math.round(node.x)} ${Math.round(node.y)}`);
+  const referenced = new Set<string>();
   for (const edge of model.edges) {
     const from = byId.get(edge.from);
     const to = byId.get(edge.to);
     if (!from || !to) continue;
     const label = edge.label ? `|${edge.label}|` : '';
     lines.push(`  ${nodeSyntax(from)} -->${label} ${nodeSyntax(to)}`);
+    referenced.add(from.id);
+    referenced.add(to.id);
   }
-  if (model.edges.length === 0) {
-    for (const node of model.nodes) lines.push(`  ${nodeSyntax(node)}`);
+  // Emit any node not touched by an edge so isolated nodes survive the round-trip.
+  for (const node of model.nodes) {
+    if (!referenced.has(node.id)) lines.push(`  ${nodeSyntax(node)}`);
   }
   return lines.join('\n');
 }
@@ -1175,8 +1217,8 @@ export const Mermaid = createReactBlockSpec(
       const [editing, setEditing] = useState(code.trim().length === 0);
       // eslint-disable-next-line react-hooks/rules-of-hooks
       const [draft, setDraft] = useState(code);
-      const supportsVisualFlowchart = parseFlowchart(code) !== null;
-      const supportsVisualMindmap = parseMindmap(code) !== null;
+      const supportsVisualFlowchart = parseFlowchart(code) !== null && flowchartFullyRepresentable(code);
+      const supportsVisualMindmap = parseMindmap(code) !== null && mindmapFullyRepresentable(code);
 
       return (
         <div className="dv-mermaid" contentEditable={false}>
