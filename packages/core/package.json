@@ -14,6 +14,14 @@
     "./diagram": {
       "types": "./dist/diagram.d.ts",
       "default": "./dist/diagram.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown.d.ts",
+      "default": "./dist/markdown.js"
+    },
+    "./export": {
+      "types": "./dist/export/html.d.ts",
+      "default": "./dist/export/html.js"
     }
   },
   "scripts": {

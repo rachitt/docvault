@@ -16,6 +16,13 @@ const api: DocVaultApi = {
   backlinks: (id) => ipcRenderer.invoke(CH.backlinks, id),
   listTags: () => ipcRenderer.invoke(CH.listTags),
   importFile: () => ipcRenderer.invoke(CH.importFile),
+  exportDoc: (idOrPath, format) => ipcRenderer.invoke(CH.exportDoc, idOrPath, format),
+  exportBulk: (opts) => ipcRenderer.invoke(CH.exportBulk, opts),
+  onExportProgress: (cb) => {
+    const fn = (_e: unknown, p: Parameters<typeof cb>[0]) => cb(p);
+    ipcRenderer.on(EV.exportProgress, fn);
+    return () => ipcRenderer.removeListener(EV.exportProgress, fn);
+  },
   openOriginal: (relPath) => ipcRenderer.invoke(CH.openOriginal, relPath),
   readSource: (relPath) => ipcRenderer.invoke(CH.readSource, relPath),
   getConfig: () => ipcRenderer.invoke(CH.getConfig),

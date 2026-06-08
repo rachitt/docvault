@@ -11,5 +11,5 @@ export {
   serializeCallout,
   serializeMermaid,
   splitMarkdownSegments,
-} from '@docvault/core';
-export type { CalloutType, Segment } from '@docvault/core';
+} from '@docvault/core/markdown';
+export type { CalloutType, Segment } from '@docvault/core/markdown';

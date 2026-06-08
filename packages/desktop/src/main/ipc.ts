@@ -5,8 +5,17 @@ import { dialog, ipcMain, shell, type BrowserWindow } from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import chokidar from 'chokidar';
+import type { Doc, DocMeta } from '@docvault/core';
 import { AiBridge } from './ai.js';
 import { ConfigStore } from './config.js';
+import {
+  EXPORT_EXT,
+  exportCombinedPdf,
+  exportDocToFile,
+  exportDocsToFolder,
+  fileSlug,
+  type ExportFormat,
+} from './export/index.js';
 import { enhancedEnv, resolveBin } from './shell-env.js';
 import { CH, EV } from '../shared/ipc.js';
 
@@ -97,6 +106,55 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     if (res.canceled || !res.filePaths[0]) return null;
     return call('import_file', { path: res.filePaths[0] });
   });
+  // --- Export (HTML / PDF / DOCX) ---
+  h(CH.exportDoc, async (idOrPath: string, format: ExportFormat) => {
+    const doc = await call<Doc>('read_doc', { id_or_path: idOrPath });
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Export document',
+      defaultPath: `${fileSlug(doc.frontmatter.title)}.${EXPORT_EXT[format]}`,
+      filters: [{ name: format.toUpperCase(), extensions: [EXPORT_EXT[format]] }],
+    });
+    if (res.canceled || !res.filePath) return { canceled: true as const };
+    await exportDocToFile(doc, format, res.filePath, { vaultDir });
+    shell.showItemInFolder(res.filePath);
+    return { canceled: false as const, path: res.filePath };
+  });
+  h(
+    CH.exportBulk,
+    async (opts: { product?: string; format: ExportFormat; combined?: boolean }) => {
+      const metas = await call<DocMeta[]>('list_docs', opts.product ? { product: opts.product } : {});
+      const docs: Doc[] = [];
+      for (const m of metas) docs.push(await call<Doc>('read_doc', { id_or_path: m.id }));
+      if (docs.length === 0) return { canceled: true as const };
+      const label = opts.product ?? 'vault';
+      const onProgress = (p: unknown): void => {
+        if (!win.isDestroyed()) win.webContents.send(EV.exportProgress, p);
+      };
+
+      if (opts.combined && opts.format === 'pdf') {
+        const res = await dialog.showSaveDialog(win, {
+          title: 'Export combined PDF',
+          defaultPath: `${fileSlug(label)}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+        if (res.canceled || !res.filePath) return { canceled: true as const };
+        await exportCombinedPdf(docs, res.filePath, { vaultDir }, onProgress);
+        shell.showItemInFolder(res.filePath);
+        return { canceled: false as const, path: res.filePath, count: docs.length };
+      }
+
+      const res = await dialog.showOpenDialog(win, {
+        title: 'Choose a folder to export into',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (res.canceled || !res.filePaths[0]) return { canceled: true as const };
+      const outDir = path.join(res.filePaths[0], `${fileSlug(label)}-export`);
+      const written = await exportDocsToFolder(docs, opts.format, outDir, { vaultDir }, onProgress);
+      shell.showItemInFolder(written[0] ?? outDir);
+      return { canceled: false as const, path: outDir, count: written.length };
+    },
+  );
+
   // Resolve a vault-relative path to an absolute one, refusing anything that
   // escapes the vault root (a crafted relPath must not reach arbitrary files).
   const resolveInVault = (relPath: string): string => {

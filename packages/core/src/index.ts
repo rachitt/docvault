@@ -27,7 +27,7 @@ export {
   splitMarkdownSegments,
 } from './markdown.js';
 export type { CalloutType, Segment } from './markdown.js';
-export { renderDocHtml, renderMarkdownToHtml } from './export/html.js';
+export { renderDocHtml, renderMarkdownToHtml, escapeHtml } from './export/html.js';
 export type { RenderHtmlOptions, RenderedHtml } from './export/html.js';
 export { importFile, isImportable } from './import/index.js';
 export * from './types.js';
