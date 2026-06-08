@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Square,
+  UserPlus,
   Workflow,
 } from 'lucide-react';
 import mermaid from 'mermaid';
@@ -1390,6 +1391,7 @@ function SequenceVisualEditor({
   const [editingMessage, setEditingMessage] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const suppressLifelineClick = useRef<string | null>(null);
 
   if (!model) return null;
 
@@ -1560,8 +1562,8 @@ function SequenceVisualEditor({
       }}
     >
       <div className="dv-sequence-scroll-controls">
-        <button type="button" title="Add participant" disabled={connectFrom !== null} onClick={addParticipant}>
-          <Plus size={15} />
+        <button type="button" title="Add participant node" disabled={connectFrom !== null} onClick={addParticipant}>
+          <UserPlus size={15} />
         </button>
         <button type="button" title="Scroll left" onClick={() => scrollCanvas(-1)}>
           <ChevronLeft size={15} />
@@ -1600,6 +1602,8 @@ function SequenceVisualEditor({
                     e.preventDefault();
                     e.stopPropagation();
                     if (connectFrom && connectFrom !== participant.id) {
+                      suppressLifelineClick.current = participant.id;
+                      addInteraction(participant.id);
                       return;
                     }
                     setColorParticipant(null);
@@ -1612,6 +1616,10 @@ function SequenceVisualEditor({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (suppressLifelineClick.current === participant.id) {
+                      suppressLifelineClick.current = null;
+                      return;
+                    }
                     if (connectFrom && connectFrom !== participant.id) {
                       addInteraction(participant.id);
                       return;
