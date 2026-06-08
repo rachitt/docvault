@@ -167,7 +167,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
             </button>
           </div>
         )}
-        <div className="mb-1.5 text-xs tracking-wide text-neutral-500">
+        <div className="dv-editor-breadcrumb mb-1.5 text-xs tracking-wide text-neutral-500">
           {productTitle ? `${productTitle} / ${doc.frontmatter.title}` : doc.frontmatter.title}
         </div>
         <div className="mb-2 flex items-center gap-2">
