@@ -4,11 +4,12 @@ import type {
   DocMeta,
   Product,
   SearchHit,
+  TemplateMeta,
   ThemeMode,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
-import type { ExportFormat, ExportProgress } from '../shared/ipc';
+import type { CreateDocFromTemplateArgs, ExportFormat, ExportProgress } from '../shared/ipc';
 
 export type NavView =
   | 'home'
@@ -52,6 +53,14 @@ interface State {
   exporting: boolean;
   /** Latest bulk-export progress tick, or null when not bulk-exporting. */
   exportProgress: ExportProgress | null;
+  /** Document templates (with declared variables) loaded from the vault. */
+  templates: TemplateMeta[];
+  /**
+   * Drives the new-doc modal (blank vs from-template + variable input). Null
+   * means closed. `product` pre-selects a product (from a per-product "+"),
+   * `templateId` pre-selects a template (from the Templates gallery).
+   */
+  newDocFor: { product?: string; templateId?: string } | null;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -60,6 +69,14 @@ interface State {
   saveCurrent: (content: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
+  /** Load the vault's document templates into state. */
+  loadTemplates: () => Promise<void>;
+  /** Open the new-doc modal (blank vs from-template). Null closes it. */
+  openNewDocPicker: (init: { product?: string; templateId?: string } | null) => void;
+  /** Instantiate a doc from a template and open it. */
+  createFromTemplate: (args: CreateDocFromTemplateArgs) => Promise<void>;
+  /** Save the open doc's body as a new reusable template. */
+  saveCurrentAsTemplate: (name: string) => Promise<void>;
   /** Soft-delete a single doc (moves it to trash). */
   trashDoc: (relPath: string) => Promise<void>;
   /** Soft-delete a product and all its docs (moves it to trash). */
@@ -116,16 +133,19 @@ export const useStore = create<State>((set, get) => ({
   searchQuery: '',
   exporting: false,
   exportProgress: null,
+  templates: [],
+  newDocFor: null,
 
   refresh: async () => {
     try {
-      const [products, docs, config, trash] = await Promise.all([
+      const [products, docs, config, trash, templates] = await Promise.all([
         api().listProducts(),
         api().listDocs(),
         api().getConfig(),
         api().listTrash(),
+        api().listTemplates(),
       ]);
-      set({ products, docs, config, trash, loading: false, error: null });
+      set({ products, docs, config, trash, templates, loading: false, error: null });
       get().applyTheme();
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
@@ -158,6 +178,29 @@ export const useStore = create<State>((set, get) => ({
   newProduct: async (title) => {
     await api().createProduct(slugify(title), { title });
     set({ products: await api().listProducts() });
+  },
+
+  loadTemplates: async () => {
+    set({ templates: await api().listTemplates() });
+  },
+
+  openNewDocPicker: (init) => set({ newDocFor: init }),
+
+  createFromTemplate: async (args) => {
+    const doc = await api().createDocFromTemplate(args);
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      newDocFor: null,
+    });
+    await get().openDoc(doc.frontmatter.id);
+  },
+
+  saveCurrentAsTemplate: async (name) => {
+    const cur = get().currentDoc;
+    if (!cur) return;
+    await api().saveAsTemplate(cur.frontmatter.id, name);
+    await get().loadTemplates();
   },
 
   trashDoc: async (relPath) => {

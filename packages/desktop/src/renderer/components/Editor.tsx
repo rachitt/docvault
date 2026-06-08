@@ -48,6 +48,21 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
+  // Show the inline formatting toolbar for any text-bearing block (paragraphs,
+  // headings, lists, quotes, callouts…) but hide it over blocks where inline
+  // styling is meaningless — diagrams and code. A denylist keeps formatting
+  // working for every standard/custom text block instead of paragraphs alone.
+  const updateToolbarVisibility = useCallback(() => {
+    try {
+      const type = editor.getTextCursorPosition().block.type;
+      document.documentElement.classList.toggle(
+        'dv-text-toolbar-active',
+        type !== 'mermaid' && type !== 'codeBlock',
+      );
+    } catch {
+      document.documentElement.classList.remove('dv-text-toolbar-active');
+    }
+  }, [editor]);
 
   // Load (or reload) the doc into the editor. Keyed on `reloadNonce` rather than
   // `doc.content` so our own debounced saves don't reset the editor mid-typing;
@@ -72,6 +87,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      document.documentElement.classList.remove('dv-text-toolbar-active');
     };
   }, []);
 
@@ -139,70 +155,74 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl px-12 py-10">
-      {conflict && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
-          <RefreshCw size={16} className="shrink-0" />
-          <span className="flex-1">This document was changed on disk while you were editing.</span>
-          <button
-            onClick={() => applyReload(conflict)}
-            className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700"
-          >
-            Reload (discard mine)
-          </button>
-          <button
-            onClick={() => void keepMine()}
-            className="rounded-md border border-amber-400 px-2.5 py-1 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40"
-          >
-            Keep mine
-          </button>
+        {conflict && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
+            <RefreshCw size={16} className="shrink-0" />
+            <span className="flex-1">This document was changed on disk while you were editing.</span>
+            <button
+              onClick={() => applyReload(conflict)}
+              className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700"
+            >
+              Reload (discard mine)
+            </button>
+            <button
+              onClick={() => void keepMine()}
+              className="rounded-md border border-amber-400 px-2.5 py-1 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            >
+              Keep mine
+            </button>
+          </div>
+        )}
+        <div className="dv-editor-breadcrumb mb-1.5 text-xs tracking-wide text-neutral-500">
+          {productTitle ? `${productTitle} / ${doc.frontmatter.title}` : doc.frontmatter.title}
         </div>
-      )}
-      <div className="mb-1.5 text-xs tracking-wide text-neutral-500">
-        {productTitle ? `${productTitle} / ${doc.frontmatter.title}` : doc.frontmatter.title}
-      </div>
-      <div className="mb-2 flex items-center gap-2">
-        <h1 className="flex-1 text-4xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-          {doc.frontmatter.title}
-        </h1>
-        <button
-          onClick={() => void toggleStar(doc.frontmatter.id)}
-          title={starred ? 'Unstar' : 'Star'}
-          className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        <div className="mb-2 flex items-center gap-2">
+          <h1 className="flex-1 text-4xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+            {doc.frontmatter.title}
+          </h1>
+          <button
+            onClick={() => void toggleStar(doc.frontmatter.id)}
+            title={starred ? 'Unstar' : 'Star'}
+            className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
+          </button>
+          <ExportMenu idOrPath={doc.frontmatter.id} />
+        </div>
+        <div className="mb-6 flex flex-wrap gap-1.5">
+          {doc.frontmatter.tags.map((t) => (
+            <span
+              key={t}
+              className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500 dark:bg-neutral-800"
+            >
+              #{t}
+            </span>
+          ))}
+        </div>
+        <BlockNoteView
+          editor={editor}
+          onChange={onChange}
+          onSelectionChange={updateToolbarVisibility}
+          // The desk skin is always light parchment; force BlockNote's internal
+          // palette to light so it can't render dark menus/code under the paper.
+          theme={deskActive ? 'light' : resolvedTheme}
+          slashMenu={false}
+          className="bn-container"
         >
-          <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
-        </button>
-        <ExportMenu idOrPath={doc.frontmatter.id} />
-      </div>
-      <div className="mb-6 flex flex-wrap gap-1.5">
-        {doc.frontmatter.tags.map((t) => (
-          <span key={t} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500 dark:bg-neutral-800">
-            #{t}
-          </span>
-        ))}
-      </div>
-      <BlockNoteView
-        editor={editor}
-        onChange={onChange}
-        // The desk skin is always light parchment; force BlockNote's internal
-        // palette to light so it can't render dark menus/code under the paper.
-        theme={deskActive ? 'light' : resolvedTheme}
-        slashMenu={false}
-        className="bn-container"
-      >
-        <SuggestionMenuController
-          triggerCharacter="/"
-          getItems={async (query) =>
-            filterSuggestionItems([...getDefaultReactSlashMenuItems(editor), ...customSlashItems(editor)], query)
-          }
-        />
-        {/* `[` opens the wikilink picker; minQueryLength 1 means a single `[`
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (query) =>
+              filterSuggestionItems([...getDefaultReactSlashMenuItems(editor), ...customSlashItems(editor)], query)
+            }
+          />
+          {/* `[` opens the wikilink picker; minQueryLength 1 means a single `[`
             stays inert and the menu only appears once the second `[` is typed. */}
-        <SuggestionMenuController
-          triggerCharacter="["
-          minQueryLength={1}
-          getItems={async (query) => wikilinkItems(editor, query, search, docs)}
-        />
-      </BlockNoteView>
+          <SuggestionMenuController
+            triggerCharacter="["
+            minQueryLength={1}
+            getItems={async (query) => wikilinkItems(editor, query, search, docs)}
+          />
+        </BlockNoteView>
     </div>
   );
 }

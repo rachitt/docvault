@@ -13,6 +13,7 @@ import { Sidebar } from '../components/Sidebar';
 import { MainPane } from '../components/MainPane';
 import { RightPanel } from '../components/RightPanel';
 import { CommandPalette } from '../components/CommandPalette';
+import { NewDocModal } from '../components/NewDocModal';
 import { useStore } from '../store';
 import './desk.css';
 
@@ -233,6 +234,7 @@ export default function DeskApp(): React.JSX.Element {
       <DeskStatusBar />
 
       <CommandPalette />
+      <NewDocModal />
 
       {loading && (
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center text-sm text-neutral-400">

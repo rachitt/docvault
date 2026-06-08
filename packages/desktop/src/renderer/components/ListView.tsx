@@ -26,8 +26,6 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
         return config.recent.map((id) => byId.get(id)).filter((d): d is DocMeta => !!d);
       case 'trash':
         return [];
-      case 'templates':
-        return [];
       case 'home':
       default:
         return [...docs].sort((a, b) => b.updated.localeCompare(a.updated)).slice(0, 50);
@@ -86,11 +84,6 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
           </div>
         </div>
       )}
-      {view === 'templates' && (
-        <p className="text-sm text-neutral-500">
-          Drop reusable docs in the vault's <code>templates/</code> folder.
-        </p>
-      )}
       <div className="flex flex-col gap-1">
         {items.map((d) => (
           <button
@@ -107,7 +100,7 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
             </span>
           </button>
         ))}
-        {items.length === 0 && view !== 'trash' && view !== 'templates' && (
+        {items.length === 0 && view !== 'trash' && (
           <p className="text-sm text-neutral-400">Nothing here yet.</p>
         )}
       </div>

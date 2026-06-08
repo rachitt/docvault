@@ -90,6 +90,15 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   h(CH.backlinks, (id: string) => call('get_backlinks', { id }));
   h(CH.listTags, () => call('list_tags'));
 
+  // --- Templates → MCP sidecar ---
+  h(CH.listTemplates, () => call('list_templates'));
+  h(CH.createDocFromTemplate, (args: Record<string, unknown>) =>
+    call('create_doc_from_template', args),
+  );
+  h(CH.saveAsTemplate, (idOrPath: string, name: string) =>
+    call('save_as_template', { id_or_path: idOrPath, name }),
+  );
+
   // --- Config (plain JSON, no native dep) ---
   h(CH.getConfig, () => config.read());
   h(CH.updateConfig, (patch: Record<string, unknown>) => config.update(patch));

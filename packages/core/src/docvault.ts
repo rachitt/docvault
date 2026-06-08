@@ -11,6 +11,12 @@ import {
 import { DocStore, assertSafeSegment, type CreateDocInput } from './doc.js';
 import { importFile } from './import/index.js';
 import { Indexer } from './indexer.js';
+import {
+  TemplateStore,
+  renderTemplate,
+  type Template,
+  type TemplateMeta,
+} from './template.js';
 import type {
   Doc,
   DocMeta,
@@ -42,6 +48,22 @@ export interface CreateDiagramInput {
   status?: DocStatus;
 }
 
+/** Input for {@link DocVault.createDocFromTemplate}. */
+export interface CreateDocFromTemplateInput {
+  /** Product slug the new doc lands under. */
+  product: string;
+  /** Title for the new doc; also fills the `{{title}}` placeholder. */
+  title: string;
+  /** Author name for the `{{author}}` placeholder. */
+  author?: string;
+  /** Date string for `{{date}}`; defaults to today's ISO date. */
+  date?: string;
+  /** Arbitrary `{{var}}` values declared by the template. */
+  vars?: Record<string, string>;
+  tags?: string[];
+  status?: DocStatus;
+}
+
 /**
  * The primary entry point for working with a vault. Composes the filesystem
  * doc store, the SQLite index, and the file watcher behind one API used by both
@@ -51,12 +73,14 @@ export class DocVault {
   readonly vault: Vault;
   readonly docs: DocStore;
   readonly index: Indexer;
+  readonly templates: TemplateStore;
   private watcher: VaultWatcher | null = null;
 
   private constructor(vault: Vault) {
     this.vault = vault;
     this.docs = new DocStore(vault);
     this.index = new Indexer(vault);
+    this.templates = new TemplateStore(vault);
   }
 
   /** Open (creating if needed) a vault rooted at `root` and build its index. */
@@ -375,6 +399,62 @@ export class DocVault {
       ...(input.tags ? { tags: input.tags } : {}),
       ...(input.status ? { status: input.status } : {}),
     });
+  }
+
+  // --- Templates ---------------------------------------------------------
+
+  /** List every template (metadata, no body) in the vault's templates/ folder. */
+  listTemplates(): Promise<TemplateMeta[]> {
+    return this.templates.list();
+  }
+
+  /** Read a single template (with body + declared variables) by id. */
+  getTemplate(id: string): Promise<Template> {
+    return this.templates.read(id);
+  }
+
+  /**
+   * Seed the starter template set (Meeting Notes, PRD, Runbook, ADR, Spec) into
+   * templates/, skipping any the user has already created/edited. Returns the
+   * ids that were actually written.
+   */
+  seedStarterTemplates(): Promise<string[]> {
+    return this.templates.seedStarters();
+  }
+
+  /**
+   * Instantiate a new doc from a template: render its `{{placeholders}}` with the
+   * built-ins (title/date/author) plus `vars`, then create the doc via the normal
+   * doc-creation path so it lands in the FTS index and backlinks like any other.
+   */
+  async createDocFromTemplate(
+    templateId: string,
+    input: CreateDocFromTemplateInput,
+  ): Promise<Doc> {
+    const tpl = await this.templates.read(templateId);
+    const content = renderTemplate(tpl.body, {
+      title: input.title,
+      ...(input.author ? { author: input.author } : {}),
+      ...(input.date ? { date: input.date } : {}),
+      ...(input.vars ? { vars: input.vars } : {}),
+    });
+    return this.createDoc({
+      product: input.product,
+      title: input.title,
+      content,
+      ...(input.tags ? { tags: input.tags } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    });
+  }
+
+  /**
+   * Persist an existing doc's body as a new template under templates/. The doc's
+   * markdown becomes the template body verbatim (any `{{placeholders}}` already
+   * present are preserved); the template id is derived from `name`.
+   */
+  async saveAsTemplate(docId: string, opts: { name: string }): Promise<Template> {
+    const doc = await this.readDoc(docId);
+    return this.templates.save({ name: opts.name, body: doc.content });
   }
 
   // --- Config helpers ----------------------------------------------------
