@@ -1390,6 +1390,7 @@ function SequenceVisualEditor({
   const [editingMessage, setEditingMessage] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const suppressParticipantClick = useRef<string | null>(null);
 
   if (!model) return null;
 
@@ -1690,6 +1691,23 @@ function SequenceVisualEditor({
               connectFrom === participant.id ? ' dv-sequence-node--connecting' : ''
             }${connectFrom && connectFrom !== participant.id ? ' dv-sequence-node--targetable' : ''}`}
             style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
+            onPointerDownCapture={(e) => {
+              if (!connectFrom) return;
+              e.preventDefault();
+              e.stopPropagation();
+              suppressParticipantClick.current = participant.id;
+              if (connectFrom === participant.id) {
+                setConnectFrom(null);
+                return;
+              }
+              addInteraction(participant.id);
+            }}
+            onClickCapture={(e) => {
+              if (suppressParticipantClick.current !== participant.id) return;
+              suppressParticipantClick.current = null;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={(e) => {
               if (!connectFrom) return;
               e.preventDefault();
