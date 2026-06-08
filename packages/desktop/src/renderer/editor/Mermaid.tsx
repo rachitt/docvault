@@ -1390,7 +1390,6 @@ function SequenceVisualEditor({
   const [editingMessage, setEditingMessage] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const suppressParticipantClick = useRef<string | null>(null);
 
   if (!model) return null;
 
@@ -1584,7 +1583,7 @@ function SequenceVisualEditor({
               <g key={`${participant.id}-lifeline`}>
                 <line
                   className={`dv-sequence-lifeline${
-                    selectedLifeline === participant.id ? ' dv-sequence-lifeline--selected' : ''
+                    selectedLifeline === participant.id || connectFrom === participant.id ? ' dv-sequence-lifeline--selected' : ''
                   }`}
                   x1={x}
                   y1={participant.y + SEQUENCE_NODE_H}
@@ -1689,35 +1688,8 @@ function SequenceVisualEditor({
             key={participant.id}
             className={`dv-sequence-node${
               connectFrom === participant.id ? ' dv-sequence-node--connecting' : ''
-            }${connectFrom && connectFrom !== participant.id ? ' dv-sequence-node--targetable' : ''}`}
+            }`}
             style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
-            onPointerDownCapture={(e) => {
-              if (!connectFrom) return;
-              e.preventDefault();
-              e.stopPropagation();
-              suppressParticipantClick.current = participant.id;
-              if (connectFrom === participant.id) {
-                setConnectFrom(null);
-                return;
-              }
-              addInteraction(participant.id);
-            }}
-            onClickCapture={(e) => {
-              if (suppressParticipantClick.current !== participant.id) return;
-              suppressParticipantClick.current = null;
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              if (!connectFrom) return;
-              e.preventDefault();
-              e.stopPropagation();
-              if (connectFrom === participant.id) {
-                setConnectFrom(null);
-                return;
-              }
-              addInteraction(participant.id);
-            }}
           >
             <button
               type="button"
@@ -1759,22 +1731,6 @@ function SequenceVisualEditor({
             >
               <span style={{ background: participant.color }} />
             </button>
-            <button
-              type="button"
-              className="dv-sequence-connect-button"
-              title="Add interaction arrow"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedLifeline(null);
-                setColorParticipant(null);
-                setEditingParticipant(null);
-                setEditingMessage(null);
-                setConnectFrom(connectFrom === participant.id ? null : participant.id);
-                canvasRef.current?.focus();
-              }}
-            >
-              <Link2 size={11} />
-            </button>
             {colorParticipant === participant.id ? (
               <div className="dv-sequence-colors" aria-label="Participant colors">
                 {SEQUENCE_COLORS.map((color) => (
@@ -1805,16 +1761,10 @@ function SequenceVisualEditor({
               <button
                 type="button"
                 className="dv-sequence-node-label"
-                title={connectFrom && connectFrom !== participant.id ? 'Connect interaction here' : 'Rename participant'}
+                title={connectFrom ? 'Select a vertical line to connect' : 'Rename participant'}
                 onClick={(e) => {
-                  if (connectFrom && connectFrom !== participant.id) {
+                  if (connectFrom) {
                     e.stopPropagation();
-                    addInteraction(participant.id);
-                    return;
-                  }
-                  if (connectFrom === participant.id) {
-                    e.stopPropagation();
-                    setConnectFrom(null);
                     return;
                   }
                   setDraft(participant.label);
@@ -1830,34 +1780,57 @@ function SequenceVisualEditor({
           </div>
         ))}
         {model.participants.map((participant) => (
-          <button
-            key={`${participant.id}-line-handle`}
-            type="button"
-            className="dv-sequence-lifeline-handle"
-            title="Drag lifeline length"
-            style={{
-              left: participant.x + SEQUENCE_NODE_W / 2,
-              top: participant.y + SEQUENCE_NODE_H + participant.lifelineLength,
-            }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setDrag(null);
-              setColorParticipant(null);
-              setSelectedLifeline(participant.id);
-              setConnectFrom(null);
-              setEditingParticipant(null);
-              setEditingMessage(null);
-              canvasRef.current?.focus();
-              setLifelineDrag({
-                participantId: participant.id,
-                startY: e.clientY,
-                originLength: participant.lifelineLength,
-                model,
-              });
-            }}
-          />
+          <div key={`${participant.id}-line-tools`}>
+            <button
+              type="button"
+              className={`dv-sequence-lifeline-add${connectFrom === participant.id ? ' dv-sequence-lifeline-add--active' : ''}`}
+              title="Add interaction from this lifeline"
+              style={{
+                left: participant.x + SEQUENCE_NODE_W / 2,
+                top: participant.y + SEQUENCE_NODE_H + Math.min(42, participant.lifelineLength / 2),
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDrag(null);
+                setColorParticipant(null);
+                setSelectedLifeline(null);
+                setEditingParticipant(null);
+                setEditingMessage(null);
+                setConnectFrom(connectFrom === participant.id ? null : participant.id);
+                canvasRef.current?.focus();
+              }}
+            >
+              <Plus size={11} />
+            </button>
+            <button
+              type="button"
+              className="dv-sequence-lifeline-handle"
+              title="Drag lifeline length"
+              style={{
+                left: participant.x + SEQUENCE_NODE_W / 2,
+                top: participant.y + SEQUENCE_NODE_H + participant.lifelineLength,
+              }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setDrag(null);
+                setColorParticipant(null);
+                setSelectedLifeline(participant.id);
+                setConnectFrom(null);
+                setEditingParticipant(null);
+                setEditingMessage(null);
+                canvasRef.current?.focus();
+                setLifelineDrag({
+                  participantId: participant.id,
+                  startY: e.clientY,
+                  originLength: participant.lifelineLength,
+                  model,
+                });
+              }}
+            />
+          </div>
         ))}
       </div>
     </div>
