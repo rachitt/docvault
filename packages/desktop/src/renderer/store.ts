@@ -28,7 +28,7 @@ export type NavView =
   | 'tags'
   | 'search'
   | 'doc';
-export type RightTab = 'outline' | 'links' | 'related' | 'ai';
+export type RightTab = 'outline' | 'links' | 'related' | 'history' | 'ai';
 
 /** Resolve the effective light/dark theme, expanding 'system' via the OS. */
 function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
