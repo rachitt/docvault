@@ -52,6 +52,7 @@ type DragState = {
 
 const NODE_W = 132;
 const NODE_H = 54;
+const DECISION_SIZE = 112;
 const POS_RE = /^%%\s*dv-pos:\s*([A-Za-z][\w-]*)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
 const NODE_RE = /([A-Za-z][\w-]*)(?:\[(.*?)\]|\{(.*?)\}|\((.*?)\))?/g;
 const EDGE_RE =
@@ -66,6 +67,11 @@ function nodeSyntax(node: FlowNode): string {
   if (node.shape === 'decision') return `${node.id}{${label}}`;
   if (node.shape === 'round') return `${node.id}(${label})`;
   return `${node.id}[${label}]`;
+}
+
+function nodeSize(node: FlowNode): { width: number; height: number } {
+  if (node.shape === 'decision') return { width: DECISION_SIZE, height: DECISION_SIZE };
+  return { width: NODE_W, height: NODE_H };
 }
 
 function parseFlowchart(code: string): FlowchartModel | null {
@@ -352,8 +358,8 @@ function FlowchartVisualEditor({
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
-  const width = Math.max(720, ...model.nodes.map((node) => node.x + NODE_W + 360));
-  const height = Math.max(260, ...model.nodes.map((node) => node.y + NODE_H + 80));
+  const width = Math.max(720, ...model.nodes.map((node) => node.x + nodeSize(node).width + 360));
+  const height = Math.max(260, ...model.nodes.map((node) => node.y + nodeSize(node).height + 80));
   const scrollCanvas = (direction: -1 | 1): void => {
     canvasRef.current?.scrollBy({ left: direction * 280, behavior: 'smooth' });
   };
@@ -389,11 +395,11 @@ function FlowchartVisualEditor({
   const addNextStep = (from: FlowNode, shape: FlowNodeShape): void => {
     const id = nextNodeId(model.nodes);
     const outgoing = model.edges.filter((edge) => edge.from === from.id).length;
-    const branchOffset = from.shape === 'decision' ? (outgoing % 2 === 0 ? -70 - outgoing * 18 : 70 + outgoing * 18) : 0;
+    const branchOffset = from.shape === 'decision' ? (outgoing % 2 === 0 ? -64 - outgoing * 18 : 64 + outgoing * 18) : 0;
     const newNode: FlowNode = {
       id,
       label: shape === 'decision' ? 'Decision?' : 'Next step',
-      x: from.x + 190,
+      x: from.x + nodeSize(from).width + 96,
       y: Math.max(16, from.y + branchOffset),
       shape,
     };
@@ -487,10 +493,12 @@ function FlowchartVisualEditor({
             const from = nodeById.get(edge.from);
             const to = nodeById.get(edge.to);
             if (!from || !to) return null;
-            const x1 = from.x + NODE_W;
-            const y1 = from.y + NODE_H / 2;
+            const fromSize = nodeSize(from);
+            const toSize = nodeSize(to);
+            const x1 = from.x + fromSize.width;
+            const y1 = from.y + fromSize.height / 2;
             const x2 = to.x;
-            const y2 = to.y + NODE_H / 2;
+            const y2 = to.y + toSize.height / 2;
             const midX = (x1 + x2) / 2;
             const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
             return (
@@ -525,14 +533,16 @@ function FlowchartVisualEditor({
             );
           })}
         </svg>
-        {model.nodes.map((node) => (
-          <div
-            key={node.id}
-            className={`dv-flow-node dv-flow-node--${node.shape}${
-              connectFrom === node.id ? ' dv-flow-node--connecting' : ''
-            }${connectFrom && connectFrom !== node.id ? ' dv-flow-node--targetable' : ''}`}
-            style={{ left: node.x, top: node.y, width: NODE_W, minHeight: NODE_H }}
-          >
+        {model.nodes.map((node) => {
+          const size = nodeSize(node);
+          return (
+            <div
+              key={node.id}
+              className={`dv-flow-node dv-flow-node--${node.shape}${
+                connectFrom === node.id ? ' dv-flow-node--connecting' : ''
+              }${connectFrom && connectFrom !== node.id ? ' dv-flow-node--targetable' : ''}`}
+              style={{ left: node.x, top: node.y, width: size.width, minHeight: size.height }}
+            >
             <button
               type="button"
               className="dv-flow-drag-handle"
@@ -624,8 +634,9 @@ function FlowchartVisualEditor({
                 {node.label}
               </button>
             )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

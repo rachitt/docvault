@@ -239,13 +239,13 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
     description: 'A simple branching workflow with one decision point.',
     type: 'flowchart',
     source: `flowchart TD
-%% dv-pos: A 70 120
-%% dv-pos: B 280 120
-%% dv-pos: C 500 60
-%% dv-pos: D 500 180
+%% dv-pos: A 70 110
+%% dv-pos: B 300 85
+%% dv-pos: C 540 55
+%% dv-pos: D 540 165
   A[Start] --> B{Decision?}
-  B -->|Yes| C[Yes path]
-  B -->|No| D[No path]`,
+  B -->|Yes| C[Yes]
+  B -->|No| D[No]`,
   },
   {
     id: 'flowchart-decision',
@@ -253,11 +253,13 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
     description: 'Branching flow with a yes/no decision node.',
     type: 'flowchart',
     source: `flowchart TD
-  A[Start] --> B{Is it valid?}
-  B -->|Yes| C[Process]
-  B -->|No| D[Reject]
-  C --> E[Done]
-  D --> E[Done]`,
+%% dv-pos: A 70 110
+%% dv-pos: B 300 85
+%% dv-pos: C 540 55
+%% dv-pos: D 540 165
+  A[Start] --> B{Decision?}
+  B -->|Yes| C[Yes]
+  B -->|No| D[No]`,
   },
   {
     id: 'mindmap-concept',

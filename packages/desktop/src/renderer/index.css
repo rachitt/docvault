@@ -368,6 +368,7 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-flow-node {
   position: absolute;
   z-index: 1;
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -378,10 +379,24 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
 }
 .dv-flow-node--decision {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.dv-flow-node--decision::before {
+  content: '';
+  position: absolute;
+  inset: 0.5rem;
+  z-index: -1;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.2rem;
+  background: var(--dv-bg);
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
   transform: rotate(45deg);
 }
-.dv-flow-node--decision > * {
-  transform: rotate(-45deg);
+.dv-flow-node--decision .dv-flow-node-label,
+.dv-flow-node--decision .dv-flow-node-input {
+  max-width: 4.75rem;
 }
 .dv-flow-node--round {
   border-radius: 999px;
