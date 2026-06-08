@@ -69,9 +69,47 @@ function nodeSyntax(node: FlowNode): string {
   return `${node.id}[${label}]`;
 }
 
-function nodeSize(node: FlowNode): { width: number; height: number } {
-  if (node.shape === 'decision') return { width: DECISION_SIZE, height: DECISION_SIZE };
+function sizeForShape(shape: FlowNodeShape): { width: number; height: number } {
+  if (shape === 'decision') return { width: DECISION_SIZE, height: DECISION_SIZE };
   return { width: NODE_W, height: NODE_H };
+}
+
+function nodeSize(node: FlowNode): { width: number; height: number } {
+  return sizeForShape(node.shape);
+}
+
+function edgePath(from: FlowNode, to: FlowNode): { d: string; labelX: number; labelY: number } {
+  const fromSize = nodeSize(from);
+  const toSize = nodeSize(to);
+  const fromCenterX = from.x + fromSize.width / 2;
+  const fromCenterY = from.y + fromSize.height / 2;
+  const toCenterX = to.x + toSize.width / 2;
+  const toCenterY = to.y + toSize.height / 2;
+  const isVertical = Math.abs(toCenterY - fromCenterY) > Math.abs(toCenterX - fromCenterX);
+
+  if (isVertical) {
+    const x1 = fromCenterX;
+    const y1 = toCenterY >= fromCenterY ? from.y + fromSize.height : from.y;
+    const x2 = toCenterX;
+    const y2 = toCenterY >= fromCenterY ? to.y : to.y + toSize.height;
+    const midY = (y1 + y2) / 2;
+    return {
+      d: `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`,
+      labelX: (x1 + x2) / 2,
+      labelY: midY - 8,
+    };
+  }
+
+  const x1 = toCenterX >= fromCenterX ? from.x + fromSize.width : from.x;
+  const y1 = fromCenterY;
+  const x2 = toCenterX >= fromCenterX ? to.x : to.x + toSize.width;
+  const y2 = toCenterY;
+  const midX = (x1 + x2) / 2;
+  return {
+    d: `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`,
+    labelX: midX,
+    labelY: (y1 + y2) / 2 - 8,
+  };
 }
 
 function parseFlowchart(code: string): FlowchartModel | null {
@@ -396,12 +434,18 @@ function FlowchartVisualEditor({
   const addNextStep = (from: FlowNode, shape: FlowNodeShape): void => {
     const id = nextNodeId(model.nodes);
     const outgoing = model.edges.filter((edge) => edge.from === from.id).length;
-    const branchOffset = from.shape === 'decision' ? (outgoing % 2 === 0 ? -64 - outgoing * 18 : 64 + outgoing * 18) : 0;
+    const fromSize = nodeSize(from);
+    const newSize = sizeForShape(shape);
+    const verticalOffset = supportsDecisionNodes ? from.y + fromSize.height + 104 : from.y;
+    const horizontalBranchOffset =
+      from.shape === 'decision' && supportsDecisionNodes ? (outgoing % 2 === 0 ? -110 - outgoing * 12 : 110 + outgoing * 12) : 0;
     const newNode: FlowNode = {
       id,
       label: shape === 'decision' ? 'Decision?' : 'Next step',
-      x: from.x + nodeSize(from).width + 96,
-      y: Math.max(16, from.y + branchOffset),
+      x: supportsDecisionNodes
+        ? Math.max(16, from.x + fromSize.width / 2 - newSize.width / 2 + horizontalBranchOffset)
+        : from.x + fromSize.width + 96,
+      y: Math.max(16, verticalOffset),
       shape,
     };
     const next = {
@@ -457,7 +501,7 @@ function FlowchartVisualEditor({
   return (
     <div
       ref={canvasRef}
-      className="dv-flow-editor"
+      className={`dv-flow-editor${supportsDecisionNodes ? ' dv-flow-editor--vertical' : ''}`}
       tabIndex={0}
       onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
       onPointerUp={() => setDrag(null)}
@@ -494,24 +538,17 @@ function FlowchartVisualEditor({
             const from = nodeById.get(edge.from);
             const to = nodeById.get(edge.to);
             if (!from || !to) return null;
-            const fromSize = nodeSize(from);
-            const toSize = nodeSize(to);
-            const x1 = from.x + fromSize.width;
-            const y1 = from.y + fromSize.height / 2;
-            const x2 = to.x;
-            const y2 = to.y + toSize.height / 2;
-            const midX = (x1 + x2) / 2;
-            const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+            const path = edgePath(from, to);
             return (
               <g key={edge.id}>
                 <path
                   className={`dv-flow-edge${selectedEdge === edge.id ? ' dv-flow-edge--selected' : ''}`}
-                  d={path}
+                  d={path.d}
                   markerEnd="url(#dv-flow-arrow)"
                 />
                 <path
                   className="dv-flow-edge-hit"
-                  d={path}
+                  d={path.d}
                   onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -526,7 +563,7 @@ function FlowchartVisualEditor({
                   }}
                 />
                 {edge.label ? (
-                  <text className="dv-flow-edge-label" x={midX} y={(y1 + y2) / 2 - 8} textAnchor="middle">
+                  <text className="dv-flow-edge-label" x={path.labelX} y={path.labelY} textAnchor="middle">
                     {edge.label}
                   </text>
                 ) : null}
