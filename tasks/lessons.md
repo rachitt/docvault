@@ -2,6 +2,23 @@
 
 Append-only. Each entry: what went wrong → the fix. Read this at the start of each session.
 
+- **Renderer can't import the `@docvault/core` barrel** (it pulls `indexer.ts` → `better-sqlite3`
+  + `node:fs`, which break the browser bundle — symptom: `electron-vite build` fails with
+  `"readFile" is not exported by "__vite-browser-external"`). Put browser-safe pure code behind a
+  package `exports` subpath (e.g. `./markdown`, `./export`) and import from there, like the existing
+  `./diagram` subpath. (Main process *can* import the barrel — it already does via `normalizeTrash` —
+  but prefer subpaths to keep its load sqlite-free.)
+- **`webContents.executeJavaScript` results must be structured-cloneable**, else it rejects with the
+  opaque `"An object could not be cloned"`. Two gotchas: (1) injecting a UMD bundle returns the
+  module's non-cloneable completion value — append `\n;true` so the call resolves; (2) catch errors
+  *in-page* and return a plain `{ok,error}` object, otherwise a thrown Error crosses the boundary as
+  the same opaque clone error and hides the real message.
+- **Offscreen Mermaid/PDF: use a plain hidden window** (`show:false`), NOT `offscreen:true` —
+  offscreen needs a paint subscription to composite and is the wrong mode for `printToPDF` /
+  Mermaid `getBBox` layout. Also a *windowless* Electron run auto-quits on `window-all-closed`
+  (even on macOS, with no handler); a headless export-test harness must add an empty handler. The
+  real app is fine — its main window stays open.
+
 - **Diagrams must be high quality, always** (user is emphatic). A passing `validate_diagram`
   is the floor, not the bar. Quality means: descriptive labels (not single abstract words),
   no noisy self-loops/clutter, and pick a diagram type that *adds* a view rather than restating
