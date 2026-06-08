@@ -13,7 +13,6 @@ import {
   Pencil,
   Plus,
   Square,
-  UserPlus,
   Workflow,
 } from 'lucide-react';
 import mermaid from 'mermaid';
@@ -1563,7 +1562,7 @@ function SequenceVisualEditor({
     >
       <div className="dv-sequence-scroll-controls">
         <button type="button" title="Add participant node" disabled={connectFrom !== null} onClick={addParticipant}>
-          <UserPlus size={15} />
+          <Square size={15} />
         </button>
         <button type="button" title="Scroll left" onClick={() => scrollCanvas(-1)}>
           <ChevronLeft size={15} />
