@@ -383,6 +383,10 @@
 /* the page title in the editor header, warmed to match the sheet */
 .desk-surface--app > main h1 {
   font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  color: var(--ink);
+}
+.desk-surface--app > main .dv-editor-breadcrumb {
+  color: var(--ink-soft);
 }
 
 /* ---------------------------------------------------------------- statusbar */
