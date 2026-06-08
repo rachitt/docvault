@@ -75,6 +75,43 @@ type MindmapDragState = {
   model: MindmapModel;
 };
 
+type SequenceParticipant = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  lifelineLength: number;
+  color: string;
+};
+
+type SequenceMessage = {
+  from: string;
+  to: string;
+  label: string;
+  arrow: string;
+};
+
+type SequenceModel = {
+  participants: SequenceParticipant[];
+  messages: SequenceMessage[];
+};
+
+type SequenceDragState = {
+  participantId: string;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  model: SequenceModel;
+};
+
+type SequenceLifelineDragState = {
+  participantId: string;
+  startY: number;
+  originLength: number;
+  model: SequenceModel;
+};
+
 const NODE_W = 132;
 const NODE_H = 54;
 const DECISION_SIZE = 112;
@@ -85,6 +122,12 @@ const EDGE_RE =
 const MINDMAP_POS_RE = /^%%\s*dv-mm-pos:\s*(m\d+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
 const MINDMAP_COLOR_RE = /^%%\s*dv-mm-color:\s*(m\d+)\s+(#[0-9a-fA-F]{6})\s*$/;
 const MINDMAP_COLORS = ['#0ea5d7', '#087fb1', '#ffffff', '#f3f4f6', '#fff1d8', '#f5e9ff'] as const;
+const SEQUENCE_POS_RE = /^%%\s*dv-seq-pos:\s*([A-Za-z][\w-]*)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
+const SEQUENCE_COLOR_RE = /^%%\s*dv-seq-color:\s*([A-Za-z][\w-]*)\s+(#[0-9a-fA-F]{6})\s*$/;
+const SEQUENCE_LINE_RE = /^%%\s*dv-seq-line:\s*([A-Za-z][\w-]*)\s+(\d+(?:\.\d+)?)\s*$/;
+const SEQUENCE_PARTICIPANT_RE = /^\s*(?:participant|actor)\s+([A-Za-z][\w-]*)(?:\s+as\s+(.+?))?\s*;?\s*$/i;
+const SEQUENCE_MESSAGE_RE = /^\s*([A-Za-z][\w-]*)\s*([-.=]*[<>x]?[-.=>]+[<>x]?)\s*([A-Za-z][\w-]*)\s*:\s*(.*?)\s*;?\s*$/;
+const SEQUENCE_COLORS = ['#fbf6e8', '#f3ead3', '#ffffff', '#e8f4ff', '#eef8df', '#f5e9ff'] as const;
 
 // A flowchart line the visual editor can fully round-trip: a single node, or a
 // single `A --> B` / `A -->|label| B` edge (with our supported shapes). Anything
@@ -414,6 +457,130 @@ function serializeFlowchart(model: FlowchartModel): string {
     if (!referenced.has(node.id)) lines.push(`  ${nodeSyntax(node)}`);
   }
   return lines.join('\n');
+}
+
+function cleanSequenceLabel(label: string): string {
+  return label.replace(/\n/g, ' ').trim() || 'Participant';
+}
+
+function escapeSequenceMessage(label: string): string {
+  return label.replace(/\n/g, ' ').trim() || 'Message';
+}
+
+function defaultSequenceColor(index: number): string {
+  return index % 2 === 0 ? SEQUENCE_COLORS[0] : SEQUENCE_COLORS[1];
+}
+
+function defaultSequenceLifelineLength(messageCount: number): number {
+  return Math.max(220, 120 + messageCount * 62);
+}
+
+function parseSequence(code: string): SequenceModel | null {
+  const lines = code.split('\n');
+  const head = lines.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim();
+  if (!/^sequenceDiagram\b/i.test(head ?? '')) return null;
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const colors = new Map<string, string>();
+  const lifelineLengths = new Map<string, number>();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const pos = SEQUENCE_POS_RE.exec(trimmed);
+    if (pos) positions.set(pos[1] as string, { x: Number(pos[2]), y: Number(pos[3]) });
+    const color = SEQUENCE_COLOR_RE.exec(trimmed);
+    if (color) colors.set(color[1] as string, color[2] as string);
+    const lifeline = SEQUENCE_LINE_RE.exec(trimmed);
+    if (lifeline) lifelineLengths.set(lifeline[1] as string, Number(lifeline[2]));
+  }
+
+  const participants = new Map<string, Omit<SequenceParticipant, 'x' | 'y' | 'color'>>();
+  const messages: SequenceMessage[] = [];
+
+  const ensureParticipant = (id: string): void => {
+    if (!participants.has(id)) participants.set(id, { id, label: id });
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || /^sequenceDiagram\b/i.test(trimmed)) continue;
+
+    const participant = SEQUENCE_PARTICIPANT_RE.exec(line);
+    if (participant) {
+      const id = participant[1] as string;
+      participants.set(id, { id, label: cleanSequenceLabel(participant[2] ?? id) });
+      continue;
+    }
+
+    const message = SEQUENCE_MESSAGE_RE.exec(line);
+    if (message) {
+      const from = message[1] as string;
+      const arrow = message[2] as string;
+      const to = message[3] as string;
+      ensureParticipant(from);
+      ensureParticipant(to);
+      messages.push({ from, to, arrow, label: escapeSequenceMessage(message[4] ?? '') });
+      continue;
+    }
+
+    return null;
+  }
+
+  const laidOut = [...participants.values()].map((participant, i): SequenceParticipant => {
+    const pos = positions.get(participant.id);
+    return {
+      ...participant,
+      x: pos?.x ?? 120 + i * 190,
+      y: pos?.y ?? 52,
+      lifelineLength: lifelineLengths.get(participant.id) ?? defaultSequenceLifelineLength(messages.length),
+      color: colors.get(participant.id) ?? defaultSequenceColor(i),
+    };
+  });
+
+  return laidOut.length ? { participants: laidOut, messages } : null;
+}
+
+function sequenceFullyRepresentable(code: string): boolean {
+  let sawHeader = false;
+  for (const raw of code.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('%%')) continue;
+    if (/^sequenceDiagram\b/i.test(line)) {
+      sawHeader = true;
+      continue;
+    }
+    if (SEQUENCE_PARTICIPANT_RE.test(line) || SEQUENCE_MESSAGE_RE.test(line)) continue;
+    return false;
+  }
+  return sawHeader;
+}
+
+function serializeSequence(model: SequenceModel): string {
+  const lines = ['sequenceDiagram'];
+  for (const participant of model.participants) {
+    lines.push(`%% dv-seq-pos: ${participant.id} ${Math.round(participant.x)} ${Math.round(participant.y)}`);
+    lines.push(`%% dv-seq-line: ${participant.id} ${Math.round(participant.lifelineLength)}`);
+  }
+  model.participants.forEach((participant, i) => {
+    if (participant.color !== defaultSequenceColor(i)) lines.push(`%% dv-seq-color: ${participant.id} ${participant.color}`);
+  });
+  for (const participant of model.participants) {
+    lines.push(`  participant ${participant.id} as ${cleanSequenceLabel(participant.label)}`);
+  }
+  for (const message of model.messages) {
+    lines.push(`  ${message.from}${message.arrow}${message.to}: ${escapeSequenceMessage(message.label)}`);
+  }
+  return lines.join('\n');
+}
+
+function nextSequenceParticipantId(participants: SequenceParticipant[]): string {
+  const used = new Set(participants.map((participant) => participant.id));
+  for (let i = 0; i < 26; i++) {
+    const id = `P${i + 1}`;
+    if (!used.has(id)) return id;
+  }
+  let i = participants.length + 1;
+  while (used.has(`P${i}`)) i++;
+  return `P${i}`;
 }
 
 function nextNodeId(nodes: FlowNode[]): string {
@@ -1197,6 +1364,328 @@ function MindmapVisualEditor({
   );
 }
 
+const SEQUENCE_NODE_W = 96;
+const SEQUENCE_NODE_H = 42;
+
+function SequenceVisualEditor({
+  code,
+  onChange,
+}: {
+  code: string;
+  onChange: (next: string) => void;
+}): React.JSX.Element | null {
+  const model = useMemo(() => parseSequence(code), [code]);
+  const [drag, setDrag] = useState<SequenceDragState | null>(null);
+  const [lifelineDrag, setLifelineDrag] = useState<SequenceLifelineDragState | null>(null);
+  const [colorParticipant, setColorParticipant] = useState<string | null>(null);
+  const [selectedLifeline, setSelectedLifeline] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  if (!model) return null;
+
+  const participantById = new Map(model.participants.map((participant) => [participant.id, participant]));
+  const maxMessageY =
+    Math.max(...model.participants.map((participant) => participant.y), 52) + SEQUENCE_NODE_H + 86 + model.messages.length * 62;
+  const width = Math.max(620, ...model.participants.map((participant) => participant.x + SEQUENCE_NODE_W + 120));
+  const height = Math.max(
+    320,
+    maxMessageY + 84,
+    ...model.participants.map((participant) => participant.y + SEQUENCE_NODE_H + participant.lifelineLength + 60),
+  );
+
+  const moveParticipant = (clientX: number, clientY: number): void => {
+    if (!drag) return;
+    const dx = clientX - drag.startX;
+    const dy = clientY - drag.startY;
+    const next = {
+      ...drag.model,
+      participants: drag.model.participants.map((participant) =>
+        participant.id === drag.participantId
+          ? {
+              ...participant,
+              x: Math.max(20, drag.originX + dx),
+              y: Math.max(20, drag.originY + dy),
+            }
+          : participant,
+      ),
+    };
+    onChange(serializeSequence(next));
+  };
+
+  const moveLifeline = (clientY: number): void => {
+    if (!lifelineDrag) return;
+    const dy = clientY - lifelineDrag.startY;
+    const next = {
+      ...lifelineDrag.model,
+      participants: lifelineDrag.model.participants.map((participant) =>
+        participant.id === lifelineDrag.participantId
+          ? {
+              ...participant,
+              lifelineLength: Math.max(72, lifelineDrag.originLength + dy),
+            }
+          : participant,
+      ),
+    };
+    onChange(serializeSequence(next));
+  };
+
+  const setParticipantColor = (participantId: string, color: string): void => {
+    const next = {
+      ...model,
+      participants: model.participants.map((participant) =>
+        participant.id === participantId ? { ...participant, color } : participant,
+      ),
+    };
+    onChange(serializeSequence(next));
+    setColorParticipant(null);
+  };
+
+  const scrollCanvas = (direction: -1 | 1): void => {
+    canvasRef.current?.scrollBy({ left: direction * 260, behavior: 'smooth' });
+  };
+
+  const addParticipant = (): void => {
+    const id = nextSequenceParticipantId(model.participants);
+    const rightmost = model.participants.reduce(
+      (max, participant) => Math.max(max, participant.x + SEQUENCE_NODE_W),
+      100,
+    );
+    const newParticipant: SequenceParticipant = {
+      id,
+      label: 'Participant',
+      x: rightmost + 94,
+      y: 52,
+      lifelineLength: defaultSequenceLifelineLength(model.messages.length),
+      color: defaultSequenceColor(model.participants.length),
+    };
+    onChange(serializeSequence({ ...model, participants: [...model.participants, newParticipant] }));
+    requestAnimationFrame(() => {
+      canvasRef.current?.scrollTo({ left: Math.max(0, newParticipant.x - 80), behavior: 'smooth' });
+    });
+  };
+
+  const deleteSelectedLifeline = (): void => {
+    if (!selectedLifeline || model.participants.length <= 1) {
+      setSelectedLifeline(null);
+      return;
+    }
+    const next = {
+      participants: model.participants.filter((participant) => participant.id !== selectedLifeline),
+      messages: model.messages.filter(
+        (message) => message.from !== selectedLifeline && message.to !== selectedLifeline,
+      ),
+    };
+    setSelectedLifeline(null);
+    setColorParticipant(null);
+    setDrag(null);
+    setLifelineDrag(null);
+    onChange(serializeSequence(next));
+  };
+
+  return (
+    <div
+      ref={canvasRef}
+      className="dv-sequence-editor"
+      tabIndex={0}
+      onPointerMove={(e) => {
+        moveParticipant(e.clientX, e.clientY);
+        moveLifeline(e.clientY);
+      }}
+      onPointerUp={() => {
+        setDrag(null);
+        setLifelineDrag(null);
+      }}
+      onPointerCancel={() => {
+        setDrag(null);
+        setLifelineDrag(null);
+      }}
+      onKeyDown={(e) => {
+        if (selectedLifeline && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteSelectedLifeline();
+        }
+      }}
+    >
+      <div className="dv-sequence-scroll-controls">
+        <button type="button" title="Add participant" onClick={addParticipant}>
+          <Plus size={15} />
+        </button>
+        <button type="button" title="Scroll left" onClick={() => scrollCanvas(-1)}>
+          <ChevronLeft size={15} />
+        </button>
+        <button type="button" title="Scroll right" onClick={() => scrollCanvas(1)}>
+          <ChevronRight size={15} />
+        </button>
+      </div>
+      <div className="dv-sequence-canvas" style={{ width, height }}>
+        <svg className="dv-sequence-lines" width={width} height={height} aria-hidden="true">
+          <defs>
+            <marker id="dv-sequence-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" />
+            </marker>
+          </defs>
+          {model.participants.map((participant) => {
+            const x = participant.x + SEQUENCE_NODE_W / 2;
+            return (
+              <g key={`${participant.id}-lifeline`}>
+                <line
+                  className={`dv-sequence-lifeline${
+                    selectedLifeline === participant.id ? ' dv-sequence-lifeline--selected' : ''
+                  }`}
+                  x1={x}
+                  y1={participant.y + SEQUENCE_NODE_H}
+                  x2={x}
+                  y2={participant.y + SEQUENCE_NODE_H + participant.lifelineLength}
+                />
+                <line
+                  className="dv-sequence-lifeline-hit"
+                  x1={x}
+                  y1={participant.y + SEQUENCE_NODE_H}
+                  x2={x}
+                  y2={participant.y + SEQUENCE_NODE_H + participant.lifelineLength}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setColorParticipant(null);
+                    setSelectedLifeline(participant.id);
+                    canvasRef.current?.focus();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedLifeline(participant.id);
+                    canvasRef.current?.focus();
+                  }}
+                />
+              </g>
+            );
+          })}
+          {model.messages.map((message, i) => {
+            const from = participantById.get(message.from);
+            const to = participantById.get(message.to);
+            if (!from || !to) return null;
+            const y = Math.max(from.y, to.y) + SEQUENCE_NODE_H + 68 + i * 62;
+            const x1 = from.x + SEQUENCE_NODE_W / 2;
+            const x2 = to.x + SEQUENCE_NODE_W / 2;
+            const isReturn = message.arrow.includes('--') || message.arrow.includes('-.');
+            const leftToRight = x2 >= x1;
+            return (
+              <g key={`${message.from}-${message.to}-${i}`}>
+                <line
+                  className={`dv-sequence-message${isReturn ? ' dv-sequence-message--return' : ''}`}
+                  x1={x1}
+                  y1={y}
+                  x2={x2}
+                  y2={y}
+                  markerEnd="url(#dv-sequence-arrow)"
+                />
+                <text
+                  className="dv-sequence-message-label"
+                  x={(x1 + x2) / 2}
+                  y={y - 14}
+                  textAnchor="middle"
+                >
+                  {message.label}
+                </text>
+                {message.arrow.includes('x') ? (
+                  <text className="dv-sequence-stop" x={leftToRight ? x2 + 8 : x2 - 8} y={y + 4} textAnchor="middle">
+                    x
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+        </svg>
+        {model.participants.map((participant, i) => (
+          <div
+            key={participant.id}
+            className="dv-sequence-node"
+            style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
+          >
+            <button
+              type="button"
+              className="dv-sequence-drag-handle"
+              title="Drag participant"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setColorParticipant(null);
+                setLifelineDrag(null);
+                setSelectedLifeline(null);
+                setDrag({
+                  participantId: participant.id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  originX: participant.x,
+                  originY: participant.y,
+                  model,
+                });
+              }}
+            >
+              <GripVertical size={13} />
+            </button>
+            <button
+              type="button"
+              className="dv-sequence-color-button"
+              title="Change participant color"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLifeline(null);
+                setColorParticipant(colorParticipant === participant.id ? null : participant.id);
+              }}
+            >
+              <span style={{ background: participant.color }} />
+            </button>
+            {colorParticipant === participant.id ? (
+              <div className="dv-sequence-colors" aria-label="Participant colors">
+                {SEQUENCE_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    title={color === defaultSequenceColor(i) ? 'Default' : color}
+                    className={participant.color === color ? 'dv-sequence-color--selected' : ''}
+                    style={{ background: color }}
+                    onClick={() => setParticipantColor(participant.id, color)}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <span className="dv-sequence-node-label">{participant.label}</span>
+          </div>
+        ))}
+        {model.participants.map((participant) => (
+          <button
+            key={`${participant.id}-line-handle`}
+            type="button"
+            className="dv-sequence-lifeline-handle"
+            title="Drag lifeline length"
+            style={{
+              left: participant.x + SEQUENCE_NODE_W / 2,
+              top: participant.y + SEQUENCE_NODE_H + participant.lifelineLength,
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setDrag(null);
+              setColorParticipant(null);
+              setSelectedLifeline(participant.id);
+              canvasRef.current?.focus();
+              setLifelineDrag({
+                participantId: participant.id,
+                startY: e.clientY,
+                originLength: participant.lifelineLength,
+                model,
+              });
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Mermaid diagram block. Renders the diagram from its `code` prop and lets the
  * user edit the source inline. Serialized to a ```mermaid fenced code block by
@@ -1219,6 +1708,7 @@ export const Mermaid = createReactBlockSpec(
       const [draft, setDraft] = useState(code);
       const supportsVisualFlowchart = parseFlowchart(code) !== null && flowchartFullyRepresentable(code);
       const supportsVisualMindmap = parseMindmap(code) !== null && mindmapFullyRepresentable(code);
+      const supportsVisualSequence = parseSequence(code) !== null && sequenceFullyRepresentable(code);
 
       return (
         <div className="dv-mermaid" contentEditable={false}>
@@ -1269,6 +1759,11 @@ export const Mermaid = createReactBlockSpec(
                 />
               ) : supportsVisualMindmap ? (
                 <MindmapVisualEditor
+                  code={code}
+                  onChange={(next) => editor.updateBlock(block, { props: { code: next } })}
+                />
+              ) : supportsVisualSequence ? (
+                <SequenceVisualEditor
                   code={code}
                   onChange={(next) => editor.updateBlock(block, { props: { code: next } })}
                 />

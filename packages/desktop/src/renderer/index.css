@@ -771,6 +771,203 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
   font-size: 0.8125rem;
   text-align: center;
 }
+.dv-sequence-editor {
+  position: relative;
+  overflow: auto;
+  max-height: 30rem;
+  padding: 1rem;
+  border-top: 1px solid var(--dv-border);
+  background:
+    linear-gradient(var(--dv-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dv-border) 1px, transparent 1px),
+    var(--dv-bg);
+  background-size: 24px 24px;
+}
+.dv-sequence-editor:focus {
+  outline: none;
+}
+.dv-sequence-canvas {
+  position: relative;
+  min-width: 100%;
+}
+.dv-sequence-scroll-controls {
+  position: sticky;
+  top: 0.5rem;
+  left: calc(100% - 7rem);
+  z-index: 4;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dv-bg) 88%, white);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.1);
+}
+.dv-sequence-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+}
+.dv-sequence-scroll-controls button:hover {
+  background: var(--dv-sidebar);
+}
+.dv-sequence-lines {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dv-sequence-lifeline {
+  stroke: var(--dv-diagram-accent);
+  stroke-width: 2;
+  opacity: 0.62;
+}
+.dv-sequence-lifeline--selected {
+  stroke-width: 3;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--dv-diagram-accent) 42%, transparent));
+}
+.dv-sequence-lifeline-hit {
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.dv-sequence-lifeline-handle {
+  position: absolute;
+  z-index: 2;
+  width: 0.95rem;
+  height: 0.95rem;
+  padding: 0;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 999px;
+  background: var(--dv-bg);
+  cursor: ns-resize;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+.dv-sequence-lifeline-handle:hover {
+  background: var(--dv-sidebar);
+}
+.dv-sequence-message {
+  stroke: var(--dv-diagram-accent);
+  stroke-width: 2;
+}
+.dv-sequence-message--return {
+  stroke-dasharray: 5 5;
+}
+.dv-sequence-lines marker path {
+  fill: var(--dv-diagram-accent);
+}
+.dv-sequence-message-label {
+  fill: var(--dv-text);
+  font-size: 0.82rem;
+  paint-order: stroke;
+  stroke: var(--dv-bg);
+  stroke-width: 5px;
+}
+.dv-sequence-stop {
+  fill: var(--dv-diagram-accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.dv-sequence-node {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 1.35rem 0.45rem 0.75rem;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.4rem;
+  color: var(--dv-text);
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-sequence-drag-handle {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: grab;
+}
+.dv-sequence-drag-handle:active {
+  cursor: grabbing;
+}
+.dv-sequence-drag-handle:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
+.dv-sequence-color-button {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.dv-sequence-color-button span {
+  width: 0.68rem;
+  height: 0.68rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.dv-sequence-colors {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0.25rem;
+  z-index: 4;
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.4rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 0.5rem;
+  background: var(--dv-bg);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.dv-sequence-colors button {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 40%, transparent);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+.dv-sequence-color--selected {
+  box-shadow: 0 0 0 2px var(--dv-diagram-accent);
+}
+.dv-sequence-node-label {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font-size: 0.82rem;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .dv-mermaid-empty {
   padding: 1rem;
   color: var(--dv-muted);
