@@ -14,6 +14,14 @@
     "./diagram": {
       "types": "./dist/diagram.d.ts",
       "default": "./dist/diagram.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown.d.ts",
+      "default": "./dist/markdown.js"
+    },
+    "./export": {
+      "types": "./dist/export/html.d.ts",
+      "default": "./dist/export/html.js"
     }
   },
   "scripts": {
@@ -27,11 +35,13 @@
     "chokidar": "^4.0.3",
     "gray-matter": "^4.0.3",
     "mammoth": "^1.9.0",
+    "markdown-it": "^14.2.0",
     "ulid": "^2.3.0",
     "unpdf": "^0.12.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.13.1",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"

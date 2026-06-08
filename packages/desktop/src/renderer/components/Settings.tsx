@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import {
   Bot,
   Check,
+  Download,
+  FolderDown,
+  Loader2,
   Palette,
   SlidersHorizontal,
   Sparkles,
   Terminal,
 } from 'lucide-react';
 import type { VaultConfig } from '@docvault/core';
+import type { ExportFormat } from '../../shared/ipc';
 import { useStore } from '../store';
 
 const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -104,6 +108,14 @@ export function Settings(): React.JSX.Element {
         />
       </Section>
 
+      <Section
+        title="Export"
+        description="Export a product or the whole vault to HTML, PDF, or Word."
+        icon={Download}
+      >
+        <ExportPanel />
+      </Section>
+
       <Section title="Storage" description="Counts derived from this vault's config.">
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Starred" value={config.starred.length} />
@@ -112,6 +124,86 @@ export function Settings(): React.JSX.Element {
         </div>
       </Section>
     </div>
+  );
+}
+
+const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
+  { value: 'pdf', label: 'PDF' },
+  { value: 'html', label: 'HTML' },
+  { value: 'docx', label: 'Word (.docx)' },
+];
+
+function ExportPanel(): React.JSX.Element {
+  const products = useStore((s) => s.products);
+  const exportBulk = useStore((s) => s.exportBulk);
+  const exporting = useStore((s) => s.exporting);
+  const progress = useStore((s) => s.exportProgress);
+  const [scope, setScope] = useState<string>(''); // '' = whole vault
+  const [format, setFormat] = useState<ExportFormat>('pdf');
+
+  const product = scope || undefined;
+  const run = (combined: boolean): void => void exportBulk({ product, format, combined });
+
+  return (
+    <>
+      <Field label="Scope">
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
+          className="w-full rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm text-neutral-800 outline-none focus:border-[var(--dv-accent)]"
+        >
+          <option value="">Whole vault</option>
+          {products.map((p) => (
+            <option key={p.slug} value={p.slug}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Format">
+        <div className="grid grid-cols-3 gap-2">
+          {FORMAT_OPTIONS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFormat(f.value)}
+              className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                format === f.value
+                  ? 'border-[var(--dv-accent)] bg-blue-50/50 font-medium text-neutral-800'
+                  : 'border-[var(--dv-border)] bg-white text-neutral-600 hover:border-neutral-300'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => run(false)}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:border-neutral-300 disabled:opacity-50"
+        >
+          <FolderDown size={15} /> Export to folder
+        </button>
+        {format === 'pdf' && (
+          <button
+            onClick={() => run(true)}
+            disabled={exporting}
+            className="flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:border-neutral-300 disabled:opacity-50"
+          >
+            <Download size={15} /> Combined PDF
+          </button>
+        )}
+        {exporting && (
+          <span className="flex items-center gap-1.5 text-xs text-neutral-500">
+            <Loader2 size={13} className="animate-spin" />
+            {progress ? `Exporting ${progress.done}/${progress.total}…` : 'Exporting…'}
+          </span>
+        )}
+      </div>
+    </>
   );
 }
 

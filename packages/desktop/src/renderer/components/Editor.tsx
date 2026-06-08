@@ -13,6 +13,7 @@ import { listDiagramTemplates } from '@docvault/core/diagram';
 import { useStore } from '../store';
 import { docVaultSchema, type DocVaultEditor } from '../editor/schema';
 import { blocksToMarkdown, markdownToBlocks } from '../editor/transform';
+import { ExportMenu } from './ExportMenu';
 
 /**
  * Notion-style block editor backed by markdown. Loads the doc's markdown into
@@ -186,6 +187,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           >
             <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
           </button>
+          <ExportMenu idOrPath={doc.frontmatter.id} />
         </div>
         <div className="mb-6 flex flex-wrap gap-1.5">
           {doc.frontmatter.tags.map((t) => (

@@ -9,7 +9,7 @@ import type {
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
-import type { CreateDocFromTemplateArgs } from '../shared/ipc';
+import type { CreateDocFromTemplateArgs, ExportFormat, ExportProgress } from '../shared/ipc';
 
 export type NavView =
   | 'home'
@@ -49,6 +49,10 @@ interface State {
   tagFilter: string | null;
   /** Query backing the full-page search results view. */
   searchQuery: string;
+  /** True while an export is running; drives spinners / disabled buttons. */
+  exporting: boolean;
+  /** Latest bulk-export progress tick, or null when not bulk-exporting. */
+  exportProgress: ExportProgress | null;
   /** Document templates (with declared variables) loaded from the vault. */
   templates: TemplateMeta[];
   /**
@@ -80,6 +84,10 @@ interface State {
   /** Restore a trashed doc/product back to its original location. */
   restoreTrash: (trashPath: string) => Promise<void>;
   importFile: () => Promise<void>;
+  /** Export a single doc to a chosen file (HTML / PDF / DOCX). */
+  exportDoc: (idOrPath: string, format: ExportFormat) => Promise<void>;
+  /** Export a product (or whole vault) as per-doc files or a combined PDF. */
+  exportBulk: (opts: { product?: string; format: ExportFormat; combined?: boolean }) => Promise<void>;
   toggleStar: (docId: string) => Promise<void>;
   updateConfig: (patch: Partial<VaultConfig>) => Promise<void>;
   setTheme: (mode: ThemeMode) => Promise<void>;
@@ -123,6 +131,8 @@ export const useStore = create<State>((set, get) => ({
   resolvedTheme: 'light',
   tagFilter: null,
   searchQuery: '',
+  exporting: false,
+  exportProgress: null,
   templates: [],
   newDocFor: null,
 
@@ -234,6 +244,30 @@ export const useStore = create<State>((set, get) => ({
     if (doc) {
       set({ docs: await api().listDocs() });
       await get().openDoc(doc.frontmatter.id);
+    }
+  },
+
+  exportDoc: async (idOrPath, format) => {
+    set({ exporting: true, error: null });
+    try {
+      await api().exportDoc(idOrPath, format);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ exporting: false });
+    }
+  },
+
+  exportBulk: async (opts) => {
+    set({ exporting: true, exportProgress: null, error: null });
+    const off = api().onExportProgress((p) => set({ exportProgress: p }));
+    try {
+      await api().exportBulk(opts);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      off();
+      set({ exporting: false, exportProgress: null });
     }
   },
 
