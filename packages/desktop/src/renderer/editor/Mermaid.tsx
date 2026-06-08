@@ -1366,6 +1366,12 @@ function MindmapVisualEditor({
 
 const SEQUENCE_NODE_W = 96;
 const SEQUENCE_NODE_H = 42;
+const SEQUENCE_LABEL_MIN_W = 62;
+const SEQUENCE_LABEL_MAX_W = 180;
+
+function sequenceMessageLabelWidth(label: string): number {
+  return Math.min(SEQUENCE_LABEL_MAX_W, Math.max(SEQUENCE_LABEL_MIN_W, label.length * 8 + 24));
+}
 
 function SequenceVisualEditor({
   code,
@@ -1626,6 +1632,7 @@ function SequenceVisualEditor({
             const x1 = from.x + SEQUENCE_NODE_W / 2;
             const x2 = to.x + SEQUENCE_NODE_W / 2;
             const labelX = (x1 + x2) / 2;
+            const labelWidth = sequenceMessageLabelWidth(message.label);
             const isReturn = message.arrow.includes('--') || message.arrow.includes('-.');
             const leftToRight = x2 >= x1;
             return (
@@ -1638,7 +1645,7 @@ function SequenceVisualEditor({
                   y2={y}
                   markerEnd="url(#dv-sequence-arrow)"
                 />
-                <foreignObject x={labelX - 70} y={y - 34} width="140" height="28">
+                <foreignObject x={labelX - labelWidth / 2} y={y - 34} width={labelWidth} height="28">
                   {editingMessage === i ? (
                     <input
                       className="dv-sequence-message-input"
