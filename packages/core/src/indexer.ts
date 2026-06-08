@@ -1,7 +1,39 @@
 import Database from 'better-sqlite3';
+import { blobToVector, cosineSimilarity, vectorToBlob } from './embed.js';
 import { extractWikilinks } from './links.js';
 import type { Doc, DocMeta, SearchHit, SearchOptions } from './types.js';
 import type { Vault } from './vault.js';
+
+/** A markdown chunk persisted with its embedding for semantic search. */
+export interface StoredChunk {
+  docId: string;
+  chunkIndex: number;
+  breadcrumb: string;
+  text: string;
+  embedding: Float32Array;
+}
+
+/** A single semantic hit: the best-matching passage of a doc plus its score. */
+export interface SemanticHit extends DocMeta {
+  /** The matching chunk's text (breadcrumb-prefixed). */
+  passage: string;
+  /** Heading breadcrumb of the matching chunk, e.g. "Setup > Database". */
+  breadcrumb: string;
+  /** Cosine similarity in [-1, 1]; higher is a better match. */
+  score: number;
+}
+
+/** A fused hit combining full-text and vector rankings via RRF. */
+export interface HybridHit extends DocMeta {
+  /** Reciprocal-rank-fusion score; higher is a better match. */
+  score: number;
+  /** Best snippet/passage available (FTS snippet, else semantic passage). */
+  snippet: string;
+  /** True if the doc appeared in the full-text results. */
+  inFts: boolean;
+  /** True if the doc appeared in the vector results. */
+  inSemantic: boolean;
+}
 
 /**
  * Turn arbitrary user input into a safe FTS5 MATCH expression. Each word is
@@ -58,6 +90,27 @@ export class Indexer {
         doc_id UNINDEXED, title, body
       );
     `);
+
+    // Versioned migrations for additive schema (semantic search). Bump
+    // PRAGMA user_version as new steps are added; each step is idempotent.
+    const version = this.db.pragma('user_version', { simple: true }) as number;
+    if (version < 1) {
+      // chunks: one row per embedded passage. Indexed by doc_id so a doc's old
+      // chunks can be dropped + replaced atomically on re-index. The embedding
+      // is a little-endian Float32 BLOB (see embed.ts vectorToBlob/blobToVector).
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS chunks (
+          doc_id      TEXT NOT NULL,
+          chunk_index INTEGER NOT NULL,
+          breadcrumb  TEXT NOT NULL,
+          text        TEXT NOT NULL,
+          embedding   BLOB NOT NULL,
+          PRIMARY KEY (doc_id, chunk_index)
+        );
+        CREATE INDEX IF NOT EXISTS chunks_doc_id ON chunks(doc_id);
+      `);
+      this.db.pragma('user_version = 1');
+    }
   }
 
   /** Insert or update a single doc's index entry. */
@@ -126,6 +179,7 @@ export class Indexer {
     this.db.prepare('DELETE FROM docs_fts WHERE doc_id = ?').run(docId);
     this.db.prepare('DELETE FROM tags WHERE doc_id = ?').run(docId);
     this.db.prepare('DELETE FROM links WHERE src_id = ?').run(docId);
+    this.db.prepare('DELETE FROM chunks WHERE doc_id = ?').run(docId);
     this.db.prepare('DELETE FROM docs WHERE id = ?').run(docId);
   }
 
@@ -189,6 +243,14 @@ export class Indexer {
       | Record<string, unknown>
       | undefined;
     return row ? this.rowToMeta(row, this.tagsByDoc([id]).get(id) ?? []) : null;
+  }
+
+  /** Look up a doc's id by its vault-relative path (or null if not indexed). */
+  idByPath(relPath: string): string | null {
+    const row = this.db.prepare('SELECT id FROM docs WHERE rel_path = ?').get(relPath) as
+      | { id: string }
+      | undefined;
+    return row?.id ?? null;
   }
 
   /** Full-text search with bm25 ranking and highlighted snippets. */
@@ -256,8 +318,238 @@ export class Indexer {
   /** Clear everything (used by full reindex). */
   clear(): void {
     this.db.exec(
-      'DELETE FROM docs; DELETE FROM tags; DELETE FROM links; DELETE FROM docs_fts;',
+      'DELETE FROM docs; DELETE FROM tags; DELETE FROM links; DELETE FROM docs_fts; DELETE FROM chunks;',
     );
+  }
+
+  // --- Semantic / vector index ------------------------------------------
+
+  /**
+   * Replace all stored chunks for a doc with a fresh set (atomically). Passing
+   * an empty array just drops the doc's chunks. The doc itself must already be
+   * upserted; chunks are keyed by its id.
+   */
+  replaceChunks(docId: string, chunks: StoredChunk[]): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM chunks WHERE doc_id = ?').run(docId);
+      const ins = this.db.prepare(
+        `INSERT INTO chunks (doc_id, chunk_index, breadcrumb, text, embedding)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      for (const c of chunks) {
+        ins.run(docId, c.chunkIndex, c.breadcrumb, c.text, vectorToBlob(c.embedding));
+      }
+    });
+    tx();
+  }
+
+  /** True if the doc currently has at least one stored chunk. */
+  hasChunks(docId: string): boolean {
+    const row = this.db.prepare('SELECT 1 FROM chunks WHERE doc_id = ? LIMIT 1').get(docId);
+    return row !== undefined;
+  }
+
+  /** Doc ids that are indexed but have no chunks yet (backfill candidates). */
+  docIdsWithoutChunks(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT d.id FROM docs d
+         LEFT JOIN chunks c ON c.doc_id = d.id
+         WHERE c.doc_id IS NULL`,
+      )
+      .all() as { id: string }[];
+    return rows.map((r) => r.id);
+  }
+
+  /** Total number of stored chunks (diagnostics / tests). */
+  chunkCount(): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM chunks').get() as { n: number }).n;
+  }
+
+  /** Number of chunks stored for a single doc (tests / diagnostics). */
+  chunkCountFor(docId: string): number {
+    return (
+      this.db.prepare('SELECT COUNT(*) AS n FROM chunks WHERE doc_id = ?').get(docId) as {
+        n: number;
+      }
+    ).n;
+  }
+
+  /**
+   * Top-K semantic search: score every stored chunk against the query vector by
+   * cosine similarity, keep the single best chunk per doc, and return the top K
+   * docs. Optional product/tag filters are applied while scanning.
+   *
+   * This is a brute-force scan over all chunk vectors. For a local docs vault
+   * (thousands of chunks) that's well under a millisecond; if a vault ever grows
+   * large enough to matter, this is the seam to add an ANN index behind.
+   */
+  searchSemantic(
+    queryVec: Float32Array,
+    opts: { k?: number; product?: string; tag?: string } = {},
+  ): SemanticHit[] {
+    const k = opts.k ?? 10;
+    const params: Record<string, unknown> = {};
+    let filters = '';
+    if (opts.product) {
+      filters += ' AND d.product = @product';
+      params.product = opts.product;
+    }
+    if (opts.tag) {
+      filters += ' AND d.id IN (SELECT doc_id FROM tags WHERE tag = @tag)';
+      params.tag = opts.tag;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT c.doc_id, c.breadcrumb, c.text, c.embedding, d.*
+         FROM chunks c JOIN docs d ON d.id = c.doc_id
+         WHERE 1=1${filters}`,
+      )
+      .all(params) as (Record<string, unknown> & {
+      doc_id: string;
+      breadcrumb: string;
+      text: string;
+      embedding: Buffer;
+    })[];
+
+    // Keep the best-scoring chunk per doc.
+    const best = new Map<string, { row: (typeof rows)[number]; score: number }>();
+    for (const row of rows) {
+      const score = cosineSimilarity(queryVec, blobToVector(row.embedding));
+      const prev = best.get(row.doc_id);
+      if (!prev || score > prev.score) best.set(row.doc_id, { row, score });
+    }
+
+    const top = [...best.values()].sort((a, b) => b.score - a.score).slice(0, k);
+    const tags = this.tagsByDoc(top.map((t) => t.row.id as string));
+    return top.map(({ row, score }) => ({
+      ...this.rowToMeta(row, tags.get(row.id as string) ?? []),
+      passage: row.text,
+      breadcrumb: row.breadcrumb,
+      score,
+    }));
+  }
+
+  /**
+   * Hybrid search: fuse the full-text (bm25) ranking with the vector (cosine)
+   * ranking using Reciprocal Rank Fusion (RRF). Each list contributes
+   * `1 / (rrfK + rank)` per doc; the scores sum, so a doc ranked highly by
+   * either signal — and especially by both — floats to the top. RRF is rank-
+   * based, so it needs no score normalization between the two very different
+   * scales (bm25 vs cosine).
+   *
+   * `rrfK` (default 60, the canonical value) damps the contribution of lower
+   * ranks. We pull a deeper candidate pool from each side (`poolMultiplier`) so
+   * fusion can promote a doc that's mid-list in one signal but top in the other.
+   */
+  searchHybrid(
+    query: string,
+    queryVec: Float32Array,
+    opts: { k?: number; product?: string; tag?: string; rrfK?: number } = {},
+  ): HybridHit[] {
+    const k = opts.k ?? 10;
+    const rrfK = opts.rrfK ?? 60;
+    const pool = Math.max(k * 5, 25);
+    const filter = {
+      ...(opts.product ? { product: opts.product } : {}),
+      ...(opts.tag ? { tag: opts.tag } : {}),
+    };
+
+    const ftsHits = this.search({ query, limit: pool, ...filter });
+    const semHits = this.searchSemantic(queryVec, { k: pool, ...filter });
+
+    type Acc = {
+      meta: DocMeta;
+      score: number;
+      snippet: string;
+      inFts: boolean;
+      inSemantic: boolean;
+    };
+    const acc = new Map<string, Acc>();
+    const bump = (meta: DocMeta, rank: number, snippet: string, which: 'fts' | 'sem'): void => {
+      const cur = acc.get(meta.id) ?? {
+        meta,
+        score: 0,
+        snippet: '',
+        inFts: false,
+        inSemantic: false,
+      };
+      cur.score += 1 / (rrfK + rank);
+      // Prefer an FTS snippet (it highlights matched terms); fall back to the
+      // semantic passage when only the vector side found this doc.
+      if (which === 'fts') {
+        cur.snippet = snippet;
+        cur.inFts = true;
+      } else {
+        if (!cur.inFts) cur.snippet = snippet;
+        cur.inSemantic = true;
+      }
+      acc.set(meta.id, cur);
+    };
+
+    ftsHits.forEach((h, i) => bump(h, i, h.snippet, 'fts'));
+    semHits.forEach((h, i) => bump(h, i, h.passage, 'sem'));
+
+    return [...acc.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k)
+      .map((a) => ({
+        ...a.meta,
+        score: a.score,
+        snippet: a.snippet,
+        inFts: a.inFts,
+        inSemantic: a.inSemantic,
+      }));
+  }
+
+  /**
+   * Nearest-neighbour docs for an already-indexed doc, using its stored chunk
+   * embeddings (no re-embedding). Scores every *other* doc's chunks against the
+   * source doc's chunks and keeps the single best chunk-pair similarity per
+   * candidate doc, then returns the top K. The source doc is excluded. If the
+   * source has no stored chunks yet (not embedded), returns an empty list.
+   */
+  relatedDocs(docId: string, opts: { k?: number } = {}): SemanticHit[] {
+    const k = opts.k ?? 8;
+    const srcRows = this.db
+      .prepare('SELECT embedding FROM chunks WHERE doc_id = ?')
+      .all(docId) as { embedding: Buffer }[];
+    if (srcRows.length === 0) return [];
+    const srcVecs = srcRows.map((r) => blobToVector(r.embedding));
+
+    const rows = this.db
+      .prepare(
+        `SELECT c.doc_id, c.breadcrumb, c.text, c.embedding, d.*
+         FROM chunks c JOIN docs d ON d.id = c.doc_id
+         WHERE c.doc_id != ?`,
+      )
+      .all(docId) as (Record<string, unknown> & {
+      doc_id: string;
+      breadcrumb: string;
+      text: string;
+      embedding: Buffer;
+    })[];
+
+    const best = new Map<string, { row: (typeof rows)[number]; score: number }>();
+    for (const row of rows) {
+      const vec = blobToVector(row.embedding);
+      let score = -Infinity;
+      for (const s of srcVecs) {
+        const sim = cosineSimilarity(s, vec);
+        if (sim > score) score = sim;
+      }
+      const prev = best.get(row.doc_id);
+      if (!prev || score > prev.score) best.set(row.doc_id, { row, score });
+    }
+
+    const top = [...best.values()].sort((a, b) => b.score - a.score).slice(0, k);
+    const tags = this.tagsByDoc(top.map((t) => t.row.id as string));
+    return top.map(({ row, score }) => ({
+      ...this.rowToMeta(row, tags.get(row.id as string) ?? []),
+      passage: row.text,
+      breadcrumb: row.breadcrumb,
+      score,
+    }));
   }
 
   close(): void {

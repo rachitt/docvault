@@ -7,3 +7,8 @@ allowBuilds:
   canvas: false
   electron: true
   esbuild: true
+  # transformers.js (semantic search) deps. sharp must run its install script to
+  # fetch the prebuilt native binary (libvips) — without it @xenova/transformers
+  # fails to import. protobufjs only sets up an unused CLI, so leave it off.
+  protobufjs: false
+  sharp: true

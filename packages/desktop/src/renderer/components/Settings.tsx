@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   Bot,
   Check,
   Download,
@@ -11,7 +12,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import type { VaultConfig } from '@docvault/core';
-import type { ExportFormat } from '../../shared/ipc';
+import type { EmbeddingStatus, ExportFormat } from '../../shared/ipc';
 import { useStore } from '../store';
 
 const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -108,6 +109,8 @@ export function Settings(): React.JSX.Element {
         />
       </Section>
 
+      <SemanticSection semanticEnabled={config.semanticEnabled} />
+
       <Section
         title="Export"
         description="Export a product or the whole vault to HTML, PDF, or Word."
@@ -124,6 +127,110 @@ export function Settings(): React.JSX.Element {
         </div>
       </Section>
     </div>
+  );
+}
+
+/**
+ * Semantic-search section: a toggle that enables/disables semantic indexing
+ * (persisted in config), plus a live embedding/backfill progress indicator.
+ *
+ * Progress is surfaced by polling `embeddingStatus()` every second while work is
+ * pending (the simpler, robust option vs. a dedicated main→renderer event
+ * channel — backfill is bounded and the status query is cheap). Enabling the
+ * toggle kicks off a backfill so existing docs become searchable. `error`
+ * surfaces a failed first-run model download (e.g. offline).
+ */
+function SemanticSection({ semanticEnabled }: { semanticEnabled: boolean }): React.JSX.Element {
+  const updateConfig = useStore((s) => s.updateConfig);
+  const embeddingStatus = useStore((s) => s.embeddingStatus);
+  const backfillEmbeddings = useStore((s) => s.backfillEmbeddings);
+  const [status, setStatus] = useState<EmbeddingStatus | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+
+  const poll = useCallback(async () => {
+    try {
+      setStatus(await embeddingStatus());
+    } catch {
+      /* status is best-effort; ignore transient IPC errors */
+    }
+  }, [embeddingStatus]);
+
+  // Poll while semantic is on: every 1s if there's pending/in-flight work,
+  // otherwise a slower idle refresh so a fresh error still surfaces.
+  useEffect(() => {
+    if (!semanticEnabled) {
+      setStatus(null);
+      return;
+    }
+    void poll();
+    const busy = backfilling || (!!status && (status.pending > 0 || status.inFlight > 0));
+    const interval = setInterval(() => void poll(), busy ? 1000 : 5000);
+    return () => clearInterval(interval);
+  }, [semanticEnabled, poll, backfilling, status]);
+
+  const onToggle = async (on: boolean): Promise<void> => {
+    await updateConfig({ semanticEnabled: on });
+    if (on) {
+      // Backfill embeddings for docs indexed before semantic was enabled.
+      setBackfilling(true);
+      try {
+        setStatus(await backfillEmbeddings());
+      } catch {
+        await poll();
+      } finally {
+        setBackfilling(false);
+      }
+    }
+  };
+
+  const done = status ? status.total - status.pending : 0;
+  const pct = status && status.total > 0 ? Math.round((done / status.total) * 100) : 100;
+  const inProgress = backfilling || (!!status && (status.pending > 0 || status.inFlight > 0));
+
+  return (
+    <Section
+      title="Semantic search"
+      description="Meaning-based search and related-docs, powered by a local on-device embedding model."
+      icon={Sparkles}
+    >
+      <Toggle
+        label="Enable semantic search"
+        description="Adds Semantic and Hybrid search modes plus the Related-docs panel. The first run downloads a small embedding model."
+        checked={semanticEnabled}
+        onChange={(v) => void onToggle(v)}
+      />
+
+      {semanticEnabled && (
+        <div className="rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2.5">
+          {status?.error ? (
+            <div className="flex items-start gap-2 text-sm text-amber-700">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <span>
+                Embedding failed: {status.error}. Check your connection — the model downloads on
+                first use.
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="font-medium text-neutral-700">
+                  {inProgress ? 'Indexing documents…' : 'Documents indexed'}
+                </span>
+                <span className="text-xs text-neutral-500">
+                  {status ? `${done} / ${status.total}` : '…'}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                <div
+                  className="h-full rounded-full bg-[var(--dv-accent)] transition-[width] duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Section>
   );
 }
 

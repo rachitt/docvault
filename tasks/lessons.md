@@ -26,6 +26,20 @@ Append-only. Each entry: what went wrong → the fix. Read this at the start of 
   blocks, `activate`/`deactivate`, and `Note over` where they aid clarity. Don't dash off a
   minimal diagram — design it.
 
+- **pnpm build allowlist is `package.json` → `pnpm.onlyBuiltDependencies`, NOT the
+  `allowBuilds:` map in `pnpm-workspace.yaml`** (that key is non-standard and pnpm ignores it).
+  A native dep (e.g. `sharp`, pulled in by `@xenova/transformers`) only runs its install/build
+  script if listed there. Symptom: import fails with `Cannot find module .../build/Release/*.node`.
+  Verify a packaging fix with a real `rm -rf node_modules && pnpm install`, not `pnpm rebuild`/
+  `--force` (both no-op on cached build state).
+- **Stub-based tests can hide a broken real path**: the semantic suite injected a stub embedder,
+  so 68 tests passed green while the *real* `TransformersEmbedder` couldn't even import (sharp).
+  Don't trust a subagent's "loads in node" claim — smoke-test the real dependency path once
+  (`node -e "import('pkg')"` + a tiny functional check) before declaring a feature done.
+- **Watcher integration tests flake under suite CPU load**: chokidar `awaitWriteFinish` events
+  stall when vitest runs test files in parallel. Fixes: load-tolerant timeouts (assert *eventual*
+  convergence, not a 3s SLA) + `vitest.config.ts` `fileParallelism: false` for the core package.
+
 - **Keychain prompt on every launch = ad-hoc signature churn**: the app encrypts cookies
   via the Keychain (`EnableCookieEncryption` fuse in `build/fuses.cjs`). macOS ties that grant
   to the code signature, but local builds are ad-hoc (`identity: null`) so the fingerprint

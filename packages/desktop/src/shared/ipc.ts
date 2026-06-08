@@ -3,13 +3,46 @@ import type {
   Doc,
   DocMeta,
   Product,
-  SearchHit,
   SearchOptions,
   Template,
   TemplateMeta,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
+
+/** How a search runs: exact full-text, vector, or RRF fusion of both. */
+export type SearchMode = 'fts' | 'semantic' | 'hybrid';
+
+/** Renderer-side search options: core's FTS options plus the mode selector. */
+export type SearchQuery = SearchOptions & { mode?: SearchMode };
+
+/**
+ * A unified search result for the renderer. `fts` hits carry the FTS `snippet`
+ * + `rank`; `semantic`/`hybrid` hits carry a best `passage`, `breadcrumb`, and
+ * similarity `score`. The renderer reads whichever fields are present, so this
+ * is the loose union of all hit shapes the search modes can return.
+ */
+export type UnifiedHit = DocMeta & {
+  snippet?: string;
+  rank?: number;
+  passage?: string;
+  breadcrumb?: string;
+  score?: number;
+  inFts?: boolean;
+  inSemantic?: boolean;
+};
+
+/** Background embedding progress, polled for the Settings status indicator. */
+export interface EmbeddingStatus {
+  /** Indexed docs still lacking passage embeddings. */
+  pending: number;
+  /** Total indexed docs. */
+  total: number;
+  /** Embedding jobs currently running. */
+  inFlight: number;
+  /** Last embedding error message (e.g. offline model download), cleared on read. */
+  error: string | null;
+}
 
 /** IPC channel names (request/response via ipcRenderer.invoke). */
 export const CH = {
@@ -24,6 +57,9 @@ export const CH = {
   listTrash: 'dv:listTrash',
   restoreTrash: 'dv:restoreTrash',
   search: 'dv:search',
+  relatedDocs: 'dv:relatedDocs',
+  embeddingStatus: 'dv:embeddingStatus',
+  backfillEmbeddings: 'dv:backfillEmbeddings',
   backlinks: 'dv:backlinks',
   listTags: 'dv:listTags',
   listTemplates: 'dv:listTemplates',
@@ -95,7 +131,19 @@ export interface DocVaultApi {
   listTrash(): Promise<TrashEntry[]>;
   /** Restore a trashed doc/product to its original location by trash path. */
   restoreTrash(trashPath: string): Promise<void>;
-  search(opts: SearchOptions): Promise<SearchHit[]>;
+  /**
+   * Search across all docs. `mode` selects the strategy (fts / semantic /
+   * hybrid, default hybrid in core); the returned hits are the loose union of
+   * all modes' shapes — read `snippet` for fts, `passage`+`breadcrumb` for
+   * semantic/hybrid.
+   */
+  search(opts: SearchQuery): Promise<UnifiedHit[]>;
+  /** Nearest-neighbour docs for an open doc (semantic "related reading"). */
+  relatedDocs(id: string, limit?: number): Promise<UnifiedHit[]>;
+  /** Poll background embedding/backfill progress (and clear any last error). */
+  embeddingStatus(): Promise<EmbeddingStatus>;
+  /** Embed every indexed doc that still lacks passage embeddings. */
+  backfillEmbeddings(): Promise<{ processed: number } & EmbeddingStatus>;
   backlinks(id: string): Promise<DocMeta[]>;
   listTags(): Promise<{ tag: string; count: number }[]>;
   /** List document templates from the vault, each with its declared {{variables}}. */

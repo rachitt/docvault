@@ -8,9 +8,16 @@ import {
   type ValidateResult,
   type DiagramTemplate,
 } from './diagram.js';
+import { chunkMarkdown } from './chunk.js';
 import { DocStore, assertSafeSegment, type CreateDocInput } from './doc.js';
+import { TransformersEmbedder, type Embedder } from './embed.js';
 import { importFile } from './import/index.js';
-import { Indexer } from './indexer.js';
+import {
+  Indexer,
+  type HybridHit,
+  type SemanticHit,
+  type StoredChunk,
+} from './indexer.js';
 import {
   TemplateStore,
   renderTemplate,
@@ -69,25 +76,46 @@ export interface CreateDocFromTemplateInput {
  * doc store, the SQLite index, and the file watcher behind one API used by both
  * the MCP server and the desktop app.
  */
+/** Options for {@link DocVault.open}. */
+export interface DocVaultOptions {
+  /**
+   * Embedder used to power semantic/hybrid search. Defaults to the on-device
+   * transformers.js model ({@link TransformersEmbedder}). Inject a stub in tests
+   * (or to use a different model) so nothing depends on a model download.
+   */
+  embedder?: Embedder;
+}
+
 export class DocVault {
   readonly vault: Vault;
   readonly docs: DocStore;
   readonly index: Indexer;
+  readonly embedder: Embedder;
   readonly templates: TemplateStore;
   private watcher: VaultWatcher | null = null;
 
-  private constructor(vault: Vault) {
+  /**
+   * Serializes background embedding work so re-chunking never overlaps for the
+   * same vault and the main index path is never blocked on the (slow) model.
+   * Keyed by doc id so newer edits supersede in-flight ones in order.
+   */
+  private embedQueue = new Map<string, Promise<void>>();
+  /** Surfaces a background-embedding failure to callers/tests that care. */
+  private lastEmbedError: unknown = null;
+
+  private constructor(vault: Vault, embedder: Embedder) {
     this.vault = vault;
     this.docs = new DocStore(vault);
     this.index = new Indexer(vault);
+    this.embedder = embedder;
     this.templates = new TemplateStore(vault);
   }
 
   /** Open (creating if needed) a vault rooted at `root` and build its index. */
-  static async open(root: string): Promise<DocVault> {
+  static async open(root: string, opts: DocVaultOptions = {}): Promise<DocVault> {
     const vault = new Vault(root);
     await vault.ensure();
-    const dv = new DocVault(vault);
+    const dv = new DocVault(vault, opts.embedder ?? new TransformersEmbedder());
     await dv.reindexAll();
     await dv.purgeExpiredTrash();
     return dv;
@@ -103,7 +131,13 @@ export class DocVault {
     let count = 0;
     for (const relPath of paths) {
       try {
-        this.index.upsert(await this.docs.read(relPath));
+        const doc = await this.docs.read(relPath);
+        this.index.upsert(doc);
+        // Embedding is fired off in the background (see enqueueEmbed) so a full
+        // reindex returns as soon as FTS/metadata are ready; vectors fill in
+        // asynchronously. Callers that need vectors ready (tests, a one-shot
+        // CLI) can await whenEmbeddingsSettled().
+        this.enqueueEmbed(doc.frontmatter.id, doc.content);
         count++;
       } catch {
         /* skip unreadable file */
@@ -112,10 +146,135 @@ export class DocVault {
     return count;
   }
 
+  // --- Semantic embedding pipeline --------------------------------------
+
+  /**
+   * (Re)chunk + (re)embed a doc and replace its stored chunks — the slow path,
+   * run off the main index thread. Failures are recorded (lastEmbedError) but
+   * never thrown to the caller: a missing/failed model must not break normal
+   * editing or FTS search, which remain fully functional without vectors.
+   */
+  private async embedDoc(docId: string, content: string): Promise<void> {
+    const chunks = chunkMarkdown(content);
+    if (chunks.length === 0) {
+      this.index.replaceChunks(docId, []);
+      return;
+    }
+    const vectors = await this.embedder.embed(chunks.map((c) => c.text));
+    const stored: StoredChunk[] = chunks.map((c, i) => ({
+      docId,
+      chunkIndex: c.index,
+      breadcrumb: c.breadcrumb,
+      text: c.text,
+      embedding: vectors[i]!,
+    }));
+    // The doc may have been deleted while we were embedding; replaceChunks just
+    // writes orphan-free rows keyed by doc_id, and a later delete drops them.
+    this.index.replaceChunks(docId, stored);
+  }
+
+  /**
+   * Schedule embedding for a doc without blocking the caller. Per-doc work is
+   * serialized so a rapid edit→edit→edit sequence re-embeds in order and the
+   * latest content wins (no duplicate or stale chunks). Fire-and-forget: errors
+   * are swallowed into lastEmbedError so the index path never rejects.
+   */
+  private enqueueEmbed(docId: string, content: string): void {
+    const prev = this.embedQueue.get(docId) ?? Promise.resolve();
+    const next = prev
+      .catch(() => undefined)
+      .then(() => this.embedDoc(docId, content))
+      .catch((err) => {
+        this.lastEmbedError = err;
+      })
+      .finally(() => {
+        if (this.embedQueue.get(docId) === next) this.embedQueue.delete(docId);
+      });
+    this.embedQueue.set(docId, next);
+  }
+
+  /**
+   * Resolve once all currently-queued background embedding work has settled.
+   * Mainly for tests and one-shot tooling; the app never needs to await this.
+   * Re-checks after draining since embedding one batch can enqueue nothing new
+   * here, but a concurrent upsert might have added more.
+   */
+  async whenEmbeddingsSettled(): Promise<void> {
+    while (this.embedQueue.size > 0) {
+      await Promise.allSettled([...this.embedQueue.values()]);
+    }
+  }
+
+  /** The most recent background-embedding error, or null. Cleared on read. */
+  takeEmbedError(): unknown {
+    const err = this.lastEmbedError;
+    this.lastEmbedError = null;
+    return err;
+  }
+
+  /**
+   * Embed every indexed doc that currently lacks chunks (e.g. on first run after
+   * the feature ships, or after the DB was rebuilt). Synchronous + awaitable so
+   * a caller can show progress; reports `{ done, total }` after each doc.
+   */
+  async backfillEmbeddings(
+    onProgress?: (p: { done: number; total: number; docId: string }) => void,
+  ): Promise<number> {
+    const ids = this.index.docIdsWithoutChunks();
+    let done = 0;
+    for (const id of ids) {
+      const meta = this.index.getById(id);
+      if (meta) {
+        try {
+          const doc = await this.docs.read(meta.relPath);
+          await this.embedDoc(id, doc.content);
+        } catch {
+          /* unreadable mid-backfill; skip and continue */
+        }
+      }
+      done++;
+      onProgress?.({ done, total: ids.length, docId: id });
+    }
+    return done;
+  }
+
   // --- Reads -------------------------------------------------------------
 
   search(opts: SearchOptions): SearchHit[] {
     return this.index.search(opts);
+  }
+
+  /**
+   * Semantic (vector) search: embed the query, then return the top-K docs by
+   * cosine similarity of their best-matching passage. Optional product/tag
+   * filters mirror {@link search}. Returns each hit's best passage + score.
+   */
+  async searchSemantic(
+    query: string,
+    opts: { k?: number; product?: string; tag?: string } = {},
+  ): Promise<SemanticHit[]> {
+    const [vec] = await this.embedder.embed([query]);
+    if (!vec) return [];
+    return this.index.searchSemantic(vec, opts);
+  }
+
+  /**
+   * Hybrid search: Reciprocal Rank Fusion of full-text (bm25) and semantic
+   * (cosine) rankings — best general-purpose mode, since it catches both exact
+   * keyword matches and paraphrases. Embeds the query once and fuses.
+   */
+  async searchHybrid(
+    query: string,
+    opts: { k?: number; product?: string; tag?: string; rrfK?: number } = {},
+  ): Promise<HybridHit[]> {
+    const [vec] = await this.embedder.embed([query]);
+    if (!vec) return this.index.search({ query, limit: opts.k ?? 10 }).map((h) => ({
+      ...h,
+      score: 0,
+      inFts: true,
+      inSemantic: false,
+    }));
+    return this.index.searchHybrid(query, vec, opts);
   }
 
   listDocs(opts: { product?: string; tag?: string } = {}): DocMeta[] {
@@ -134,6 +293,28 @@ export class DocVault {
 
   backlinks(id: string): DocMeta[] {
     return this.index.backlinks(id);
+  }
+
+  /**
+   * Nearest-neighbour docs for an already-open doc, by semantic similarity of
+   * their stored chunk embeddings — "related reading" for the current doc.
+   * Reuses the doc's stored vectors (no re-embedding); returns an empty list if
+   * the doc has not been embedded yet. Each hit carries its best passage +
+   * heading breadcrumb + similarity score, like {@link searchSemantic}.
+   */
+  relatedDocs(id: string, opts: { k?: number } = {}): SemanticHit[] {
+    return this.index.relatedDocs(id, opts);
+  }
+
+  /**
+   * Lightweight snapshot of background embedding progress for the UI: how many
+   * indexed docs still lack chunks (`pending`) out of the total, plus whether
+   * any embedding work is currently in flight. Cheap to poll.
+   */
+  embeddingStatus(): { pending: number; total: number; inFlight: number } {
+    const pending = this.index.docIdsWithoutChunks().length;
+    const total = this.index.listDocs().length;
+    return { pending, total, inFlight: this.embedQueue.size };
   }
 
   listTags(): { tag: string; count: number }[] {
@@ -204,6 +385,7 @@ export class DocVault {
   async createDoc(input: CreateDocInput): Promise<Doc> {
     const doc = await this.docs.create(input);
     this.index.upsert(doc);
+    this.enqueueEmbed(doc.frontmatter.id, doc.content);
     return doc;
   }
 
@@ -213,6 +395,7 @@ export class DocVault {
   ): Promise<Doc> {
     const doc = await this.docs.update(relPath, patch);
     this.index.upsert(doc);
+    this.enqueueEmbed(doc.frontmatter.id, doc.content);
     return doc;
   }
 
@@ -313,7 +496,9 @@ export class DocVault {
     for (const p of await this.docs.list()) {
       if (p !== relPath && !p.startsWith(prefix)) continue;
       try {
-        this.index.upsert(await this.docs.read(p));
+        const doc = await this.docs.read(p);
+        this.index.upsert(doc);
+        this.enqueueEmbed(doc.frontmatter.id, doc.content);
       } catch {
         /* skip unreadable file */
       }
@@ -328,12 +513,14 @@ export class DocVault {
     doc.frontmatter.links = [...links];
     const saved = await this.docs.write(doc);
     this.index.upsert(saved);
+    this.enqueueEmbed(saved.frontmatter.id, saved.content);
     return saved;
   }
 
   async importFile(srcAbsPath: string, opts: { tags?: string[] } = {}): Promise<Doc> {
     const result = await importFile(this.vault, srcAbsPath, opts);
     this.index.upsert(result.doc);
+    this.enqueueEmbed(result.doc.frontmatter.id, result.doc.content);
     return result.doc;
   }
 
@@ -488,12 +675,30 @@ export class DocVault {
 
   startWatching(onChange?: (c: VaultChange) => void): void {
     if (this.watcher) return;
-    this.watcher = new VaultWatcher(this.vault, this.index, onChange);
+    // Re-embed on watcher upserts (external edits / re-extracted imports). The
+    // watcher has already updated FTS via index.upsert; we read back the doc id
+    // for the changed path and queue a background re-embed so vectors track disk.
+    const handle = (c: VaultChange): void => {
+      if (c.type === 'upsert') {
+        const id = this.index.idByPath(c.relPath);
+        if (id) {
+          this.docs
+            .read(c.relPath)
+            .then((doc) => this.enqueueEmbed(id, doc.content))
+            .catch(() => undefined);
+        }
+      }
+      onChange?.(c);
+    };
+    this.watcher = new VaultWatcher(this.vault, this.index, handle);
     this.watcher.start();
   }
 
   async close(): Promise<void> {
     await this.watcher?.stop();
+    // Let any in-flight background embedding finish writing before the DB closes,
+    // so a queued replaceChunks() can't hit a closed handle.
+    await this.whenEmbeddingsSettled();
     this.index.close();
   }
 }

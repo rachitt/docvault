@@ -4,10 +4,12 @@ import { useStore, type RightTab } from '../store';
 import { Outline } from './Outline';
 import { AiAssistant } from './AiAssistant';
 import { Backlinks } from './Backlinks';
+import { RelatedDocs } from './RelatedDocs';
 
 const LABELS: Record<RightTab, string> = {
   outline: 'Outline',
   links: 'Backlinks',
+  related: 'Related',
   ai: 'AI Assistant',
 };
 
@@ -20,7 +22,7 @@ export function RightPanel(): React.JSX.Element {
     <aside className="flex w-72 shrink-0 flex-col border-l border-[var(--dv-border)] bg-[var(--dv-sidebar)]">
       {currentDoc && !currentDoc.frontmatter.source && <SaveAsTemplateAction />}
       <div className="flex border-b border-[var(--dv-border)] text-sm">
-        {(['outline', 'links', 'ai'] as const).map((tab) => (
+        {(['outline', 'links', 'related', 'ai'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setRightTab(tab)}
@@ -37,6 +39,7 @@ export function RightPanel(): React.JSX.Element {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rightTab === 'outline' && <Outline />}
         {rightTab === 'links' && <Backlinks />}
+        {rightTab === 'related' && <RelatedDocs />}
         {rightTab === 'ai' && <AiAssistant />}
       </div>
     </aside>
