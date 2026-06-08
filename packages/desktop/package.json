@@ -13,6 +13,8 @@
     "icon": "python3 build/gen_icon.py build/icon.png",
     "package:mac": "electron-vite build && electron-builder --mac --dir",
     "package:dmg": "electron-vite build && electron-builder --mac dmg",
+    "dev-cert": "bash scripts/dev-cert.sh",
+    "test:export-smoke": "node scripts/export-smoke.run.mjs",
     "reinstall": "bash scripts/reinstall.sh",
     "release": "electron-vite build && electron-builder --mac dmg --publish always"
   },
@@ -22,7 +24,9 @@
     "@modelcontextprotocol/sdk": "^1.13.0",
     "chokidar": "^4.0.3",
     "docx-preview": "^0.3.7",
+    "dompurify": "^3.4.8",
     "electron-updater": "^6.8.9",
+    "html-to-docx": "^1.8.0",
     "mermaid": "^11.15.0",
     "pdfjs-dist": "5.4.296",
     "react-pdf": "^10.4.1"
@@ -31,6 +35,7 @@
     "@blocknote/core": "^0.25.1",
     "@blocknote/mantine": "^0.25.1",
     "@blocknote/react": "^0.25.1",
+    "@electron/fuses": "^1.8.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",

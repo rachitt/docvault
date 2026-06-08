@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { CornerDownLeft, FileText, Search } from 'lucide-react';
-import type { SearchHit } from '@docvault/core';
+import type { UnifiedHit } from '../../shared/ipc';
 import { useStore } from '../store';
-import { Snippet } from './Snippet';
+import { HitSnippet } from './HitSnippet';
+import { SearchModeToggle } from './SearchModeToggle';
 
 const DEBOUNCE_MS = 200;
 
@@ -12,8 +13,9 @@ export function CommandPalette(): React.JSX.Element | null {
   const search = useStore((s) => s.search);
   const openDoc = useStore((s) => s.openDoc);
   const openSearch = useStore((s) => s.openSearch);
+  const searchMode = useStore((s) => s.searchMode);
   const [q, setQ] = useState('');
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hits, setHits] = useState<UnifiedHit[]>([]);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,11 +48,12 @@ export function CommandPalette(): React.JSX.Element | null {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [q, search]);
+    // searchMode is a dep so switching keyword/semantic/hybrid re-queries live.
+  }, [q, search, searchMode]);
 
   if (!open) return null;
 
-  const choose = (hit: SearchHit): void => {
+  const choose = (hit: UnifiedHit): void => {
     void openDoc(hit.id);
     setPalette(false);
   };
@@ -87,6 +90,9 @@ export function CommandPalette(): React.JSX.Element | null {
             className="flex-1 bg-transparent text-base text-neutral-800 outline-none dark:text-neutral-100"
           />
         </div>
+        <div className="flex items-center border-b border-[var(--dv-border)] px-4 py-2">
+          <SearchModeToggle />
+        </div>
         <div className="max-h-80 overflow-y-auto">
           {hits.map((h, i) => (
             <button
@@ -103,7 +109,7 @@ export function CommandPalette(): React.JSX.Element | null {
                   {h.title}
                 </span>
                 <span className="block truncate text-xs text-neutral-400">
-                  <Snippet text={h.snippet} />
+                  <HitSnippet hit={h} />
                 </span>
               </span>
             </button>

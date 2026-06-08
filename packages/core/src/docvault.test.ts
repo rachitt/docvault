@@ -1,9 +1,23 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DocVault } from './docvault.js';
+import type { Embedder } from './embed.js';
 import { toFtsMatch } from './indexer.js';
+
+/**
+ * Cheap deterministic embedder for the non-semantic suite. Without it,
+ * `DocVault.open` defaults to the real transformers.js model, whose background
+ * load on every upsert starves the event loop and makes the watcher timing
+ * tests flake. These tests only exercise FTS/metadata, so zero vectors suffice.
+ */
+class StubEmbedder implements Embedder {
+  readonly dim = 8;
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    return texts.map(() => new Float32Array(this.dim));
+  }
+}
 
 describe('DocVault core', () => {
   let root: string;
@@ -11,7 +25,7 @@ describe('DocVault core', () => {
 
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'docvault-test-'));
-    dv = await DocVault.open(root);
+    dv = await DocVault.open(root, { embedder: new StubEmbedder() });
   });
 
   afterEach(async () => {
@@ -89,8 +103,76 @@ describe('DocVault core', () => {
     await dv.trashDoc(doc.relPath);
     expect(dv.getMeta(doc.frontmatter.id)).toBeNull();
     expect(dv.search({ query: 'disposable' })).toHaveLength(0);
+    const trash = await dv.listTrash();
+    expect(trash).toHaveLength(1);
+    expect(trash[0]).toMatchObject({ kind: 'doc', relPath: doc.relPath, title: 'Temp' });
+  });
+
+  it('restores a trashed doc back into the index', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'comeback' });
+    await dv.trashDoc(doc.relPath);
+    const [entry] = await dv.listTrash();
+    await dv.restoreTrash(entry.trashPath);
+    expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+    expect(dv.search({ query: 'comeback' })).toHaveLength(1);
+    expect(await dv.listTrash()).toHaveLength(0);
+  });
+
+  it('deletes a product: trashes its docs and restores them on undo', async () => {
+    await dv.createDoc({ product: 'doomed', title: 'One', content: 'alpha' });
+    await dv.createDoc({ product: 'doomed', title: 'Two', content: 'beta' });
+    await dv.deleteProduct('doomed');
+    expect(dv.listDocs({ product: 'doomed' })).toHaveLength(0);
+    expect((await dv.listProducts()).some((p) => p.slug === 'doomed')).toBe(false);
+    const [entry] = await dv.listTrash();
+    expect(entry).toMatchObject({ kind: 'product', relPath: 'docs/doomed' });
+    await dv.restoreTrash(entry.trashPath);
+    expect(dv.listDocs({ product: 'doomed' })).toHaveLength(2);
+    expect((await dv.listProducts()).some((p) => p.slug === 'doomed')).toBe(true);
+  });
+
+  it('auto-purges trash items older than the retention window', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Old', content: 'expired' });
+    await dv.trashDoc(doc.relPath);
+    expect(await dv.listTrash()).toHaveLength(1);
+    // Purge anything older than 0ms — everything currently trashed qualifies.
+    await dv.purgeExpiredTrash(-1);
+    expect(await dv.listTrash()).toHaveLength(0);
+  });
+
+  it('purges trash entries with an unparseable deletedAt instead of leaving zombies', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Corrupt', content: 'broken' });
+    await dv.trashDoc(doc.relPath);
+    // Corrupt the timestamp on disk, then purge with the normal (long) TTL.
+    const cfgPath = path.join(root, '.docvault', 'config.json');
+    const cfg = JSON.parse(await readFile(cfgPath, 'utf8'));
+    cfg.trash[0].deletedAt = 'not-a-date';
+    await writeFile(cfgPath, JSON.stringify(cfg), 'utf8');
+    await dv.purgeExpiredTrash();
+    expect(await dv.listTrash()).toHaveLength(0);
+  });
+
+  it('concurrent config updates do not clobber each other', async () => {
+    const a = await dv.createDoc({ product: 'p', title: 'A', content: 'a' });
+    const b = await dv.createDoc({ product: 'p', title: 'B', content: 'b' });
+    // Fire star toggles + a recent push together: a naive read-modify-write
+    // would lose one; the serialized functional update must keep both stars.
+    await Promise.all([
+      dv.toggleStar(a.frontmatter.id),
+      dv.toggleStar(b.frontmatter.id),
+      dv.pushRecent(a.frontmatter.id),
+    ]);
     const cfg = await dv.readConfig();
-    expect(cfg.trash).toContain(doc.relPath);
+    expect(cfg.starred).toContain(a.frontmatter.id);
+    expect(cfg.starred).toContain(b.frontmatter.id);
+    expect(cfg.recent).toContain(a.frontmatter.id);
+  });
+
+  it('deleting a non-existent product fails before mutating the index', async () => {
+    const doc = await dv.createDoc({ product: 'keep', title: 'Keep', content: 'safe' });
+    await expect(dv.deleteProduct('ghost')).rejects.toThrow();
+    // The unrelated product's doc is still indexed (no partial mutation).
+    expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
   });
 
   describe('path containment', () => {
@@ -111,6 +193,41 @@ describe('DocVault core', () => {
     it('rejects creating a product with a traversing slug', async () => {
       await expect(dv.createProduct('../evil', { title: 'x' })).rejects.toThrow(/Invalid/);
     });
+
+    it('rejects reading a symlink inside the vault that points outside it', async () => {
+      const outside = await mkdtemp(path.join(tmpdir(), 'docvault-outside-'));
+      try {
+        const secret = path.join(outside, 'secret.txt');
+        await writeFile(secret, 'top secret', 'utf8');
+        // A symlink planted inside the vault that resolves to an external file.
+        await symlink(secret, path.join(root, 'docs', 'leak.md'));
+        await expect(dv.readDoc('docs/leak.md')).rejects.toThrow(/escapes vault/);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses to import a symlinked source file', async () => {
+      const outside = await mkdtemp(path.join(tmpdir(), 'docvault-outside-'));
+      try {
+        const real = path.join(outside, 'real.txt');
+        await writeFile(real, 'external content', 'utf8');
+        const link = path.join(root, 'pointer.txt');
+        await symlink(real, link);
+        await expect(dv.importFile(link)).rejects.toThrow(/symlink/i);
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it('refuses to restore over a file that reclaimed the original path', async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'first' });
+    await dv.trashDoc(doc.relPath);
+    const [entry] = await dv.listTrash();
+    // A new doc now occupies the original slug; restore must not clobber it.
+    await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'second' });
+    await expect(dv.restoreTrash(entry.trashPath)).rejects.toThrow(/already exists/);
   });
 
   describe('FTS query safety', () => {
@@ -152,7 +269,9 @@ describe('DocVault core', () => {
     await waitFor(() => dv.search({ query: 'kangaroo' }).length === 1);
     expect(dv.search({ query: 'kangaroo' })).toHaveLength(1);
     expect(dv.search({ query: 'before' })).toHaveLength(0);
-  });
+    // Watcher reindex asserts *eventual* convergence; chokidar's awaitWriteFinish
+    // plus parallel-suite CPU load makes a tight deadline flaky, so allow slack.
+  }, 20000);
 
   it('re-extracts an imported original when its bytes change on disk (watcher)', async () => {
     const src = path.join(root, 'note.txt');
@@ -169,11 +288,11 @@ describe('DocVault core', () => {
     // The sidecar keeps its identity; only its content is refreshed.
     const reread = await dv.readDoc(imported.frontmatter.id);
     expect(reread.content).toContain('zebra');
-  });
+  }, 20000);
 });
 
 /** Poll until `cond` is true or the timeout elapses. */
-async function waitFor(cond: () => boolean, timeoutMs = 3000): Promise<void> {
+async function waitFor(cond: () => boolean, timeoutMs = 15000): Promise<void> {
   const start = Date.now();
   while (!cond()) {
     if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');

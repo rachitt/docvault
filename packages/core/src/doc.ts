@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { ulid } from 'ulid';
@@ -160,15 +161,35 @@ export class DocStore {
   }
 
   /**
-   * Soft-delete: move the file into .docvault/trash/ preserving its rel path.
-   * The trashed copy is timestamped so repeated deletes of the same path don't
-   * overwrite (and lose) a previously trashed version.
+   * Soft-delete: move a file or folder into .docvault/trash/ preserving its rel
+   * path. The trashed copy is timestamped so repeated deletes of the same path
+   * don't overwrite (and lose) a previously trashed version. Returns the new
+   * vault-relative location so callers can record it for later restore.
    */
-  async trash(relPath: string): Promise<void> {
+  async trash(relPath: string): Promise<string> {
     const from = this.vault.abs(relPath);
     const stamp = nowIso().replace(/[:.]/g, '-');
     const to = path.join(this.vault.metaDir, 'trash', stamp, relPath);
     await mkdir(path.dirname(to), { recursive: true });
     await rename(from, to);
+    return this.vault.rel(to);
+  }
+
+  /** Move a previously trashed file/folder back to its original location. */
+  async restore(trashPath: string, relPath: string): Promise<void> {
+    const from = this.vault.abs(trashPath);
+    const to = this.vault.abs(relPath);
+    // Don't silently clobber a file/folder that now occupies the original path
+    // (e.g. a new doc created at the same slug after the delete).
+    if (existsSync(to)) {
+      throw new Error(`Cannot restore: a file already exists at ${relPath}`);
+    }
+    await mkdir(path.dirname(to), { recursive: true });
+    await rename(from, to);
+  }
+
+  /** Permanently remove a trashed file/folder. Idempotent. */
+  async purge(trashPath: string): Promise<void> {
+    await rm(this.vault.abs(trashPath), { recursive: true, force: true });
   }
 }

@@ -46,6 +46,25 @@ if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
   exit 1
 fi
 
+# Sign the built bundle with the stable local dev identity (if present) so the
+# macOS Keychain remembers the cookie-encryption grant across rebuilds instead of
+# re-prompting every launch. Create it once: `bash scripts/dev-cert.sh`. We sign
+# SRC before copying so the signature travels into /Applications. Falls back to the
+# ad-hoc signature electron-builder produced when the identity isn't installed.
+SIGN_ID="DocVault Dev"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
+  echo "▸ Signing with '$SIGN_ID' (stable local identity)…"
+  if codesign --force --deep --options runtime \
+      --entitlements build/entitlements.mac.plist \
+      --sign "$SIGN_ID" "$SRC" >/dev/null 2>&1; then
+    echo "✓ Signed with '$SIGN_ID'"
+  else
+    echo "⚠ codesign with '$SIGN_ID' failed — leaving ad-hoc signature (keychain will keep prompting)."
+  fi
+else
+  echo "ℹ No '$SIGN_ID' identity — ad-hoc signed (run scripts/dev-cert.sh to stop keychain prompts)."
+fi
+
 # Quit the running copy so ditto can replace its files cleanly (unless --no-quit).
 if [ "$DO_QUIT" -eq 1 ] && pgrep -x "$APP_NAME" >/dev/null 2>&1; then
   echo "▸ Quitting running ${APP_NAME}…"

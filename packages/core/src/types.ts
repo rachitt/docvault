@@ -69,15 +69,53 @@ export interface Product {
 /** UI color theme. 'system' follows the OS appearance. */
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+/** A soft-deleted doc or product, recoverable until auto-purged. */
+export interface TrashEntry {
+  /** What was trashed: a single doc or a whole product folder. */
+  kind: 'doc' | 'product';
+  /** Original vault-relative path (e.g. docs/superchat/overview.md or docs/superchat). */
+  relPath: string;
+  /** Current vault-relative location under .docvault/trash. */
+  trashPath: string;
+  /** Human label (doc title or product title) for the trash listing. */
+  title: string;
+  /** ISO timestamp of when it was trashed; drives 24h auto-purge. */
+  deletedAt: string;
+}
+
+/**
+ * Coerce a persisted `trash` value into valid TrashEntry rows, dropping anything
+ * malformed. Tolerates configs written before trash carried restore metadata
+ * (those legacy string entries are simply not surfaced).
+ */
+export function normalizeTrash(value: unknown): TrashEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (e): e is TrashEntry =>
+      !!e &&
+      typeof e === 'object' &&
+      typeof (e as TrashEntry).relPath === 'string' &&
+      typeof (e as TrashEntry).trashPath === 'string' &&
+      typeof (e as TrashEntry).deletedAt === 'string' &&
+      ((e as TrashEntry).kind === 'doc' || (e as TrashEntry).kind === 'product'),
+  );
+}
+
 /** App-level state that is not doc content (lives in .docvault/config.json). */
 export interface VaultConfig {
   workspaceName: string;
   starred: string[]; // doc ids
   recent: string[]; // doc ids, most-recent first
-  trash: string[]; // relative paths of soft-deleted docs
+  trash: TrashEntry[]; // soft-deleted docs/products, recoverable until auto-purged
   aiBackend: 'claude' | 'codex';
   /** Stream the assistant's output token-by-token. Off by default. */
   aiStreaming: boolean;
+  /**
+   * Enable semantic (vector) search + related-docs. When on, the app offers
+   * semantic/hybrid search modes and backfills passage embeddings. On by
+   * default — hybrid is the best general search experience.
+   */
+  semanticEnabled: boolean;
   /** UI color theme; 'system' tracks the OS appearance. */
   theme: ThemeMode;
 }
@@ -89,5 +127,6 @@ export const DEFAULT_CONFIG: VaultConfig = {
   trash: [],
   aiBackend: 'claude',
   aiStreaming: false,
+  semanticEnabled: true,
   theme: 'system',
 };

@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   Bot,
   Check,
-  Monitor,
-  Moon,
+  Download,
+  FolderDown,
+  Loader2,
   Palette,
   SlidersHorizontal,
   Sparkles,
-  Sun,
   Terminal,
 } from 'lucide-react';
-import type { ThemeMode, VaultConfig } from '@docvault/core';
+import type { VaultConfig } from '@docvault/core';
+import type { EmbeddingStatus, ExportFormat } from '../../shared/ipc';
 import { useStore } from '../store';
 
 const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -18,16 +20,10 @@ const AI_BACKENDS: { value: VaultConfig['aiBackend']; label: string; hint: strin
   { value: 'codex', label: 'Codex', hint: 'OpenAI Codex via the Codex CLI.', icon: Terminal },
 ];
 
-const THEMES: { value: ThemeMode; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
-];
-
 export function Settings(): React.JSX.Element {
   const config = useStore((s) => s.config);
+  const trash = useStore((s) => s.trash);
   const updateConfig = useStore((s) => s.updateConfig);
-  const setTheme = useStore((s) => s.setTheme);
 
   // Local mirror of the workspace name so typing feels immediate; we persist on blur.
   const [name, setName] = useState(config?.workspaceName ?? '');
@@ -67,28 +63,11 @@ export function Settings(): React.JSX.Element {
         </Field>
       </Section>
 
-      <Section title="Appearance" description="Choose how DocVault looks." icon={Palette}>
-        <Field label="Theme">
-          <div className="grid grid-cols-3 gap-2">
-            {THEMES.map(({ value, label, icon: Icon }) => {
-              const active = (config.theme ?? 'system') === value;
-              return (
-                <button
-                  key={value}
-                  onClick={() => void setTheme(value)}
-                  className={`flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors ${
-                    active
-                      ? 'border-[var(--dv-accent)] bg-blue-50/50'
-                      : 'border-[var(--dv-border)] bg-white hover:border-neutral-300'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="text-xs font-medium text-neutral-700">{label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </Field>
+      <Section title="Appearance" description="How DocVault looks." icon={Palette}>
+        <p className="text-sm text-neutral-500">
+          DocVault uses the <span className="font-medium text-neutral-700">Desk</span> theme — a
+          warm, always-light parchment workspace.
+        </p>
       </Section>
 
       <Section
@@ -130,14 +109,208 @@ export function Settings(): React.JSX.Element {
         />
       </Section>
 
+      <SemanticSection semanticEnabled={config.semanticEnabled} />
+
+      <Section
+        title="Export"
+        description="Export a product or the whole vault to HTML, PDF, or Word."
+        icon={Download}
+      >
+        <ExportPanel />
+      </Section>
+
       <Section title="Storage" description="Counts derived from this vault's config.">
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Starred" value={config.starred.length} />
           <Stat label="Recent" value={config.recent.length} />
-          <Stat label="In trash" value={config.trash.length} />
+          <Stat label="In trash" value={trash.length} />
         </div>
       </Section>
     </div>
+  );
+}
+
+/**
+ * Semantic-search section: a toggle that enables/disables semantic indexing
+ * (persisted in config), plus a live embedding/backfill progress indicator.
+ *
+ * Progress is surfaced by polling `embeddingStatus()` every second while work is
+ * pending (the simpler, robust option vs. a dedicated main→renderer event
+ * channel — backfill is bounded and the status query is cheap). Enabling the
+ * toggle kicks off a backfill so existing docs become searchable. `error`
+ * surfaces a failed first-run model download (e.g. offline).
+ */
+function SemanticSection({ semanticEnabled }: { semanticEnabled: boolean }): React.JSX.Element {
+  const updateConfig = useStore((s) => s.updateConfig);
+  const embeddingStatus = useStore((s) => s.embeddingStatus);
+  const backfillEmbeddings = useStore((s) => s.backfillEmbeddings);
+  const [status, setStatus] = useState<EmbeddingStatus | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+
+  const poll = useCallback(async () => {
+    try {
+      setStatus(await embeddingStatus());
+    } catch {
+      /* status is best-effort; ignore transient IPC errors */
+    }
+  }, [embeddingStatus]);
+
+  // Poll while semantic is on: every 1s if there's pending/in-flight work,
+  // otherwise a slower idle refresh so a fresh error still surfaces.
+  useEffect(() => {
+    if (!semanticEnabled) {
+      setStatus(null);
+      return;
+    }
+    void poll();
+    const busy = backfilling || (!!status && (status.pending > 0 || status.inFlight > 0));
+    const interval = setInterval(() => void poll(), busy ? 1000 : 5000);
+    return () => clearInterval(interval);
+  }, [semanticEnabled, poll, backfilling, status]);
+
+  const onToggle = async (on: boolean): Promise<void> => {
+    await updateConfig({ semanticEnabled: on });
+    if (on) {
+      // Backfill embeddings for docs indexed before semantic was enabled.
+      setBackfilling(true);
+      try {
+        setStatus(await backfillEmbeddings());
+      } catch {
+        await poll();
+      } finally {
+        setBackfilling(false);
+      }
+    }
+  };
+
+  const done = status ? status.total - status.pending : 0;
+  const pct = status && status.total > 0 ? Math.round((done / status.total) * 100) : 100;
+  const inProgress = backfilling || (!!status && (status.pending > 0 || status.inFlight > 0));
+
+  return (
+    <Section
+      title="Semantic search"
+      description="Meaning-based search and related-docs, powered by a local on-device embedding model."
+      icon={Sparkles}
+    >
+      <Toggle
+        label="Enable semantic search"
+        description="Adds Semantic and Hybrid search modes plus the Related-docs panel. The first run downloads a small embedding model."
+        checked={semanticEnabled}
+        onChange={(v) => void onToggle(v)}
+      />
+
+      {semanticEnabled && (
+        <div className="rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2.5">
+          {status?.error ? (
+            <div className="flex items-start gap-2 text-sm text-amber-700">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <span>
+                Embedding failed: {status.error}. Check your connection — the model downloads on
+                first use.
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="font-medium text-neutral-700">
+                  {inProgress ? 'Indexing documents…' : 'Documents indexed'}
+                </span>
+                <span className="text-xs text-neutral-500">
+                  {status ? `${done} / ${status.total}` : '…'}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                <div
+                  className="h-full rounded-full bg-[var(--dv-accent)] transition-[width] duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
+  { value: 'pdf', label: 'PDF' },
+  { value: 'html', label: 'HTML' },
+  { value: 'docx', label: 'Word (.docx)' },
+];
+
+function ExportPanel(): React.JSX.Element {
+  const products = useStore((s) => s.products);
+  const exportBulk = useStore((s) => s.exportBulk);
+  const exporting = useStore((s) => s.exporting);
+  const progress = useStore((s) => s.exportProgress);
+  const [scope, setScope] = useState<string>(''); // '' = whole vault
+  const [format, setFormat] = useState<ExportFormat>('pdf');
+
+  const product = scope || undefined;
+  const run = (combined: boolean): void => void exportBulk({ product, format, combined });
+
+  return (
+    <>
+      <Field label="Scope">
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
+          className="w-full rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm text-neutral-800 outline-none focus:border-[var(--dv-accent)]"
+        >
+          <option value="">Whole vault</option>
+          {products.map((p) => (
+            <option key={p.slug} value={p.slug}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Format">
+        <div className="grid grid-cols-3 gap-2">
+          {FORMAT_OPTIONS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFormat(f.value)}
+              className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                format === f.value
+                  ? 'border-[var(--dv-accent)] bg-blue-50/50 font-medium text-neutral-800'
+                  : 'border-[var(--dv-border)] bg-white text-neutral-600 hover:border-neutral-300'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => run(false)}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:border-neutral-300 disabled:opacity-50"
+        >
+          <FolderDown size={15} /> Export to folder
+        </button>
+        {format === 'pdf' && (
+          <button
+            onClick={() => run(true)}
+            disabled={exporting}
+            className="flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:border-neutral-300 disabled:opacity-50"
+          >
+            <Download size={15} /> Combined PDF
+          </button>
+        )}
+        {exporting && (
+          <span className="flex items-center gap-1.5 text-xs text-neutral-500">
+            <Loader2 size={13} className="animate-spin" />
+            {progress ? `Exporting ${progress.done}/${progress.total}…` : 'Exporting…'}
+          </span>
+        )}
+      </div>
+    </>
   );
 }
 

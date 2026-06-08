@@ -1,11 +1,19 @@
 import { useMemo } from 'react';
-import { FileText } from 'lucide-react';
+import { Boxes, FileText, RotateCcw } from 'lucide-react';
 import type { DocMeta } from '@docvault/core';
 import { useStore, type NavView } from '../store';
+
+/** Hours left before a trash entry is auto-purged (TTL is 24h from deletion). */
+function hoursLeft(deletedAt: string): number {
+  const elapsed = Date.now() - new Date(deletedAt).getTime();
+  return Math.max(0, Math.ceil((24 * 60 * 60 * 1000 - elapsed) / (60 * 60 * 1000)));
+}
 
 export function ListView({ view }: { view: NavView }): React.JSX.Element {
   const docs = useStore((s) => s.docs);
   const config = useStore((s) => s.config);
+  const trash = useStore((s) => s.trash);
+  const restoreTrash = useStore((s) => s.restoreTrash);
   const openDoc = useStore((s) => s.openDoc);
 
   const items = useMemo<DocMeta[]>(() => {
@@ -17,8 +25,6 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
       case 'recent':
         return config.recent.map((id) => byId.get(id)).filter((d): d is DocMeta => !!d);
       case 'trash':
-        return [];
-      case 'templates':
         return [];
       case 'home':
       default:
@@ -42,14 +48,41 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
     <div className="mx-auto max-w-3xl px-12 py-10">
       <h1 className="mb-6 text-3xl font-bold text-neutral-900">{titles[view]}</h1>
       {view === 'trash' && (
-        <p className="text-sm text-neutral-500">
-          {config?.trash.length ? `${config.trash.length} item(s) in trash.` : 'Trash is empty.'}
-        </p>
-      )}
-      {view === 'templates' && (
-        <p className="text-sm text-neutral-500">
-          Drop reusable docs in the vault's <code>templates/</code> folder.
-        </p>
+        <div>
+          <p className="mb-4 text-sm text-neutral-500">
+            {trash.length
+              ? `${trash.length} item(s) in trash. Items are permanently deleted 24 hours after removal.`
+              : 'Trash is empty.'}
+          </p>
+          <div className="flex flex-col gap-1">
+            {trash.map((t) => (
+              <div
+                key={t.trashPath}
+                className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 hover:border-[var(--dv-border)] hover:bg-neutral-50"
+              >
+                {t.kind === 'product' ? (
+                  <Boxes size={16} className="shrink-0 text-neutral-400" />
+                ) : (
+                  <FileText size={16} className="shrink-0 text-neutral-400" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-neutral-800">{t.title}</span>
+                  <span className="block text-xs text-neutral-400">
+                    {t.kind} · deleted {new Date(t.deletedAt).toLocaleString()} ·{' '}
+                    {hoursLeft(t.deletedAt)}h left
+                  </span>
+                </span>
+                <button
+                  onClick={() => void restoreTrash(t.trashPath)}
+                  title="Restore"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--dv-border)] bg-white px-2.5 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+                >
+                  <RotateCcw size={13} /> Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
       <div className="flex flex-col gap-1">
         {items.map((d) => (
@@ -67,7 +100,7 @@ export function ListView({ view }: { view: NavView }): React.JSX.Element {
             </span>
           </button>
         ))}
-        {items.length === 0 && view !== 'trash' && view !== 'templates' && (
+        {items.length === 0 && view !== 'trash' && (
           <p className="text-sm text-neutral-400">Nothing here yet.</p>
         )}
       </div>
