@@ -84,18 +84,6 @@ describe('DocVault core', () => {
     expect(dv.search({ query: 'photosynthesis' })).toHaveLength(1);
   });
 
-  it('persists page background frontmatter across reads', async () => {
-    const doc = await dv.createDoc({ product: 'p', title: 'Styled', content: 'body' });
-    await dv.updateDoc(doc.relPath, { pageBg: '#ffffff' });
-
-    const read = await dv.readDoc(doc.relPath);
-    expect(read.frontmatter.pageBg).toBe('#ffffff');
-
-    await dv.updateDoc(doc.relPath, { pageBg: null });
-    const reset = await dv.readDoc(doc.relPath);
-    expect(reset.frontmatter.pageBg).toBeUndefined();
-  });
-
   it('soft-deletes a doc: removed from index, moved under trash/', async () => {
     const doc = await dv.createDoc({ product: 'p', title: 'Temp', content: 'disposable' });
     await dv.trashDoc(doc.relPath);

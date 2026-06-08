@@ -350,12 +350,10 @@
    on parchment. Dissolve BlockNote's own surface into the editor pane and give
    the body serif "printed page" typography to match the desk. */
 .desk-surface--app > main {
-  background: var(
-    --dv-page-background,
+  background:
     radial-gradient(120% 60% at 100% 0%, rgba(120, 95, 50, 0.06), transparent 55%),
     repeating-linear-gradient(0deg, rgba(120, 95, 50, 0.022) 0px, transparent 1px, transparent 28px),
-    var(--dv-page-bg, var(--paper))
-  ) !important;
+    var(--paper) !important;
 }
 .desk .bn-container,
 .desk .bn-container[data-color-scheme] {

@@ -47,14 +47,6 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const deskActive = document.documentElement.classList.contains('desk');
   const productSlug = doc.relPath.split('/')[1];
   const productTitle = products.find((p) => p.slug === productSlug)?.title ?? productSlug;
-  const defaultPageBg = deskActive ? '#f4ecd6' : resolvedTheme === 'dark' ? '#1b1b1d' : '#ffffff';
-  const selectedPageBg = doc.frontmatter.pageBg ?? null;
-  const pageBg = selectedPageBg ?? defaultPageBg;
-  const pageBgOptions = [
-    { label: 'Default background', value: null, color: defaultPageBg },
-    { label: 'White background', value: '#ffffff', color: '#ffffff' },
-    { label: 'Black background', value: '#000000', color: '#000000' },
-  ] as const;
   const updateToolbarVisibility = useCallback(() => {
     try {
       document.documentElement.classList.toggle(
@@ -155,15 +147,8 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
     void saveCurrent(md);
   };
 
-  const setPageBackground = async (color: string | null): Promise<void> => {
-    setCurrentDoc({ ...doc, frontmatter: { ...doc.frontmatter, pageBg: color ?? undefined } });
-    const saved = await window.docvault.updateDoc(doc.relPath, { pageBg: color });
-    setCurrentDoc(saved);
-  };
-
   return (
-    <div className="min-h-full" style={{ backgroundColor: pageBg }}>
-      <div className="mx-auto max-w-3xl px-12 py-10">
+    <div className="mx-auto max-w-3xl px-12 py-10">
         {conflict && (
           <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
             <RefreshCw size={16} className="shrink-0" />
@@ -196,25 +181,6 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
           >
             <Star size={18} className={starred ? 'fill-amber-400 text-amber-400' : 'text-neutral-400'} />
           </button>
-          <div className="flex items-center gap-1" aria-label="Page background">
-            {pageBgOptions.map((option) => {
-              const selected = selectedPageBg === option.value;
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  title={option.label}
-                  aria-label={option.label}
-                  aria-pressed={selected}
-                  onClick={() => void setPageBackground(option.value)}
-                  className={`h-5 w-5 rounded border ${
-                    selected ? 'border-[var(--dv-accent)] ring-2 ring-[var(--dv-accent)]/30' : 'border-neutral-300'
-                  }`}
-                  style={{ backgroundColor: option.color }}
-                />
-              );
-            })}
-          </div>
         </div>
         <div className="mb-6 flex flex-wrap gap-1.5">
           {doc.frontmatter.tags.map((t) => (
@@ -250,7 +216,6 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
             getItems={async (query) => wikilinkItems(editor, query, search, docs)}
           />
         </BlockNoteView>
-      </div>
     </div>
   );
 }

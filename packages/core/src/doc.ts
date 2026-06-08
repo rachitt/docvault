@@ -47,7 +47,6 @@ export function parseDoc(raw: string, vault: Vault, absPath: string): Doc {
     updated: fm.updated ?? nowIso(),
     ...(fm.links ? { links: fm.links.map(String) } : {}),
     ...(fm.source ? { source: String(fm.source) } : {}),
-    ...(typeof fm.pageBg === 'string' ? { pageBg: fm.pageBg } : {}),
   };
   return {
     frontmatter,
@@ -145,7 +144,7 @@ export class DocStore {
   /** Update a doc's body and/or selected frontmatter fields in place. */
   async update(
     relPath: string,
-    patch: { content?: string; title?: string; tags?: string[]; status?: DocStatus; pageBg?: string | null },
+    patch: { content?: string; title?: string; tags?: string[]; status?: DocStatus },
   ): Promise<Doc> {
     const doc = await this.read(relPath);
     const next: Doc = {
@@ -156,7 +155,6 @@ export class DocStore {
         ...(patch.title ? { title: patch.title } : {}),
         ...(patch.tags ? { tags: patch.tags } : {}),
         ...(patch.status ? { status: patch.status } : {}),
-        ...(patch.pageBg !== undefined ? { pageBg: patch.pageBg ?? undefined } : {}),
       },
     };
     return this.write(next);

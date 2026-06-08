@@ -47,7 +47,6 @@ export type UpdateDocPatch = {
   title?: string;
   tags?: string[];
   status?: 'draft' | 'published' | 'archived';
-  pageBg?: string | null;
 };
 
 /** The API surface exposed on `window.docvault` by the preload script. */
