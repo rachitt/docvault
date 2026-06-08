@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   Doc,
   DocMeta,
+  DocVersion,
   Product,
   TemplateMeta,
   ThemeMode,
@@ -75,6 +76,10 @@ interface State {
   /** Replace the open doc in place (e.g. after reloading it from disk). */
   setCurrentDoc: (doc: Doc) => void;
   saveCurrent: (content: string) => Promise<void>;
+  listVersions: (idOrPath: string) => Promise<DocVersion[]>;
+  readVersion: (docId: string, versionId: string) => Promise<Doc>;
+  saveVersion: (idOrPath?: string) => Promise<DocVersion | null>;
+  restoreVersion: (docId: string, versionId: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
   /** Load the vault's document templates into state. */
@@ -185,6 +190,21 @@ export const useStore = create<State>((set, get) => ({
     const saved = await api().updateDoc(cur.relPath, { content });
     set({ currentDoc: saved });
     set({ docs: await api().listDocs() });
+  },
+
+  listVersions: (idOrPath) => api().listVersions(idOrPath),
+
+  readVersion: (docId, versionId) => api().readVersion(docId, versionId),
+
+  saveVersion: async (idOrPath) => {
+    const target = idOrPath ?? get().currentDoc?.frontmatter.id;
+    if (!target) return null;
+    return api().saveVersion(target);
+  },
+
+  restoreVersion: async (docId, versionId) => {
+    const restored = await api().restoreVersion(docId, versionId);
+    set({ currentDoc: restored, docs: await api().listDocs(), view: 'doc' });
   },
 
   newDoc: async (product, title) => {

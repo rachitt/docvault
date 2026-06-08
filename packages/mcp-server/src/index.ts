@@ -175,6 +175,57 @@ async function main(): Promise<void> {
   );
 
   server.registerTool(
+    'list_doc_versions',
+    {
+      title: 'List document versions',
+      description: 'List saved history snapshots for a document by id or vault-relative path.',
+      inputSchema: {
+        id_or_path: relPath.describe('Doc id (ULID) or path like docs/superchat/overview.md'),
+      },
+    },
+    tool(({ id_or_path }) => dv.listVersions(id_or_path)),
+  );
+
+  server.registerTool(
+    'read_doc_version',
+    {
+      title: 'Read document version',
+      description: 'Read a saved history snapshot for a document.',
+      inputSchema: {
+        doc_id: nonEmpty.describe('Doc id from frontmatter'),
+        version_id: slug.describe('Version id from list_doc_versions'),
+      },
+    },
+    tool(({ doc_id, version_id }) => dv.readVersion(doc_id, version_id)),
+  );
+
+  server.registerTool(
+    'save_doc_version',
+    {
+      title: 'Save document version',
+      description: 'Create a manual history snapshot of the current live document.',
+      inputSchema: {
+        id_or_path: relPath.describe('Doc id (ULID) or vault-relative path'),
+      },
+    },
+    tool(({ id_or_path }) => dv.saveVersion(id_or_path, { actor: 'mcp', manual: true })),
+  );
+
+  server.registerTool(
+    'restore_doc_version',
+    {
+      title: 'Restore document version',
+      description:
+        'Restore a saved snapshot as the live document. The current live document is snapshotted first.',
+      inputSchema: {
+        doc_id: nonEmpty.describe('Doc id from frontmatter'),
+        version_id: slug.describe('Version id from list_doc_versions'),
+      },
+    },
+    tool(({ doc_id, version_id }) => dv.restoreVersion(doc_id, version_id)),
+  );
+
+  server.registerTool(
     'delete_doc',
     {
       title: 'Delete document',
