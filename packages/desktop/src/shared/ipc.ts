@@ -5,6 +5,8 @@ import type {
   Product,
   SearchHit,
   SearchOptions,
+  Template,
+  TemplateMeta,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
@@ -24,6 +26,9 @@ export const CH = {
   search: 'dv:search',
   backlinks: 'dv:backlinks',
   listTags: 'dv:listTags',
+  listTemplates: 'dv:listTemplates',
+  createDocFromTemplate: 'dv:createDocFromTemplate',
+  saveAsTemplate: 'dv:saveAsTemplate',
   importFile: 'dv:importFile',
   openOriginal: 'dv:openOriginal',
   readSource: 'dv:readSource',
@@ -49,6 +54,18 @@ export type UpdateDocPatch = {
   status?: 'draft' | 'published' | 'archived';
 };
 
+/** Args for instantiating a doc from a template (snake_case matches the MCP tool). */
+export type CreateDocFromTemplateArgs = {
+  template_id: string;
+  product: string;
+  title: string;
+  author?: string;
+  date?: string;
+  vars?: Record<string, string>;
+  tags?: string[];
+  status?: 'draft' | 'published' | 'archived';
+};
+
 /** The API surface exposed on `window.docvault` by the preload script. */
 export interface DocVaultApi {
   listProducts(): Promise<Product[]>;
@@ -67,6 +84,12 @@ export interface DocVaultApi {
   search(opts: SearchOptions): Promise<SearchHit[]>;
   backlinks(id: string): Promise<DocMeta[]>;
   listTags(): Promise<{ tag: string; count: number }[]>;
+  /** List document templates from the vault, each with its declared {{variables}}. */
+  listTemplates(): Promise<TemplateMeta[]>;
+  /** Instantiate a new doc by rendering a template's placeholders. */
+  createDocFromTemplate(args: CreateDocFromTemplateArgs): Promise<Doc>;
+  /** Save an existing doc's body verbatim as a new reusable template. */
+  saveAsTemplate(idOrPath: string, name: string): Promise<Template>;
   importFile(): Promise<Doc | null>;
   openOriginal(relPath: string): Promise<void>;
   /** Read the raw bytes of an imported original (pdf/docx/txt) for in-app viewing. */

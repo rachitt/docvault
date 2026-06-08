@@ -4,6 +4,7 @@ import { SourceViewer } from './SourceViewer';
 import { ListView } from './ListView';
 import { Settings } from './Settings';
 import { TagsView } from './TagsView';
+import { TemplatesView } from './TemplatesView';
 import { SearchResults } from './SearchResults';
 
 export function MainPane(): React.JSX.Element {
@@ -23,6 +24,8 @@ export function MainPane(): React.JSX.Element {
     body = <Settings />;
   } else if (view === 'tags') {
     body = <TagsView />;
+  } else if (view === 'templates') {
+    body = <TemplatesView />;
   } else if (view === 'search') {
     body = <SearchResults />;
   } else {
