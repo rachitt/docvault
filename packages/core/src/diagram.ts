@@ -236,12 +236,12 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
   {
     id: 'flowchart-basic',
     label: 'Flowchart',
-    description: 'Two connected steps to start a workflow.',
+    description: 'Top-down process flow with labelled steps.',
     type: 'flowchart',
     source: `flowchart TD
-%% dv-pos: A 80 80
-%% dv-pos: B 300 80
-  A[Start] --> B[Next step]`,
+  A[Start] --> B[Do the work]
+  B --> C[Review]
+  C --> D[Done]`,
   },
   {
     id: 'flowchart-decision',
@@ -249,23 +249,24 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
     description: 'Branching flow with a yes/no decision node.',
     type: 'flowchart',
     source: `flowchart TD
-%% dv-pos: A 300 40
-%% dv-pos: B 310 150
-%% dv-pos: C 210 310
-%% dv-pos: D 420 310
-  A[Start] --> B{Decision?}
-  B -->|Yes| C[Yes]
-  B -->|No| D[No]`,
+  A[Start] --> B{Is it valid?}
+  B -->|Yes| C[Process]
+  B -->|No| D[Reject]
+  C --> E[Done]
+  D --> E[Done]`,
   },
   {
     id: 'mindmap-concept',
     label: 'Mindmap (concept map)',
-    description: 'Simple concept map radiating from a central idea.',
+    description: 'Hierarchical concept map radiating from a central idea.',
     type: 'mindmap',
     source: `mindmap
   root((Central idea))
     Branch A
+      Detail A1
+      Detail A2
     Branch B
+      Detail B1
     Branch C`,
   },
   {
