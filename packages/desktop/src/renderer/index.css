@@ -554,10 +554,7 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   overflow: auto;
   padding: 1rem;
   border-top: 1px solid var(--dv-border);
-  background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--dv-border) 62%, transparent) 1px, transparent 0),
-    var(--dv-bg);
-  background-size: 22px 22px;
+  background: #ffffff;
 }
 .dv-mindmap-editor:focus {
   outline: none;
@@ -574,10 +571,10 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 }
 .dv-mindmap-edge {
   fill: none;
-  stroke: var(--dv-diagram-accent);
-  stroke-width: 2;
+  stroke: #0b86b7;
+  stroke-width: 2.5;
   stroke-linecap: round;
-  opacity: 0.72;
+  opacity: 0.95;
 }
 .dv-mindmap-node {
   position: absolute;
@@ -585,24 +582,33 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.55rem 1.7rem 0.55rem 1.35rem;
-  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 70%, transparent);
+  padding: 1rem;
+  border: 2px solid #222222;
   border-radius: 999px;
-  color: var(--dv-text);
-  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.1);
+  color: #1f2933;
+  box-shadow: none;
 }
 .dv-mindmap-node--depth-0 {
-  border-width: 2px;
+  border-color: #0ea5d7;
+  color: #ffffff;
   font-weight: 650;
+  font-size: 1.3rem;
+}
+.dv-mindmap-node--depth-1 {
+  border-color: #087fb1;
+  color: #ffffff;
+  font-size: 1rem;
 }
 .dv-mindmap-node--depth-2,
 .dv-mindmap-node--depth-3 {
-  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #1f2933;
+  font-size: 0.78rem;
 }
 .dv-mindmap-drag-handle {
   position: absolute;
-  top: 50%;
-  left: 0.35rem;
+  top: 0.35rem;
+  left: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -612,21 +618,22 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   border: 0;
   border-radius: 0.25rem;
   background: transparent;
-  color: var(--dv-muted);
+  color: currentColor;
+  opacity: 0.65;
   cursor: grab;
-  transform: translateY(-50%);
+  transform: translateX(-50%);
 }
 .dv-mindmap-drag-handle:active {
   cursor: grabbing;
 }
 .dv-mindmap-drag-handle:hover {
-  background: rgba(255, 255, 255, 0.46);
-  color: var(--dv-text);
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 1;
 }
 .dv-mindmap-color-button {
   position: absolute;
-  top: 50%;
-  right: 0.4rem;
+  right: 0.45rem;
+  bottom: 0.45rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -637,12 +644,11 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
-  transform: translateY(-50%);
 }
 .dv-mindmap-color-button span {
   width: 0.72rem;
   height: 0.72rem;
-  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 70%, transparent);
+  border: 1px solid currentColor;
   border-radius: 999px;
 }
 .dv-mindmap-colors {
@@ -671,14 +677,13 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 }
 .dv-mindmap-node-label {
   width: 100%;
-  min-height: 1.35rem;
+  min-height: 1.2rem;
   padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: text;
   font: inherit;
-  font-size: 0.8125rem;
   line-height: 1.2;
   text-align: center;
   overflow-wrap: anywhere;

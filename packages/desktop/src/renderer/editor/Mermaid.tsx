@@ -82,9 +82,7 @@ const EDGE_RE =
   /^\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?\s*--(?:(?:\|([^|]+)\|>)|(?:>\s*\|([^|]+)\|)|>)\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?/;
 const MINDMAP_POS_RE = /^%%\s*dv-mm-pos:\s*(m\d+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
 const MINDMAP_COLOR_RE = /^%%\s*dv-mm-color:\s*(m\d+)\s+(#[0-9a-fA-F]{6})\s*$/;
-const MINDMAP_W = 150;
-const MINDMAP_H = 48;
-const MINDMAP_COLORS = ['#fbf6e8', '#e8f2ff', '#e9f8ea', '#fff1d8', '#f5e9ff', '#ffe8e8'] as const;
+const MINDMAP_COLORS = ['#0ea5d7', '#087fb1', '#ffffff', '#f3f4f6', '#fff1d8', '#f5e9ff'] as const;
 
 function escapeLabel(label: string): string {
   return label.replace(/]/g, ')').replace(/}/g, ')').replace(/\n/g, ' ').trim() || 'Step';
@@ -208,6 +206,80 @@ function escapeMindmapLabel(label: string): string {
   return label.replace(/\n/g, ' ').trim() || 'Idea';
 }
 
+function mindmapNodeSize(node: Pick<MindmapNode, 'depth'>): number {
+  if (node.depth === 0) return 168;
+  if (node.depth === 1) return 110;
+  return 84;
+}
+
+function defaultMindmapColor(depth: number): string {
+  if (depth === 0) return MINDMAP_COLORS[0];
+  if (depth === 1) return MINDMAP_COLORS[1];
+  return MINDMAP_COLORS[2];
+}
+
+function layoutMindmapNodes(nodes: MindmapNode[], positions: Map<string, { x: number; y: number }>): MindmapNode[] {
+  const root = nodes.find((node) => node.depth === 0);
+  if (!root) return nodes;
+
+  const childrenByParent = new Map<string, MindmapNode[]>();
+  for (const node of nodes) {
+    if (!node.parentId) continue;
+    const siblings = childrenByParent.get(node.parentId) ?? [];
+    siblings.push(node);
+    childrenByParent.set(node.parentId, siblings);
+  }
+
+  const rootSize = mindmapNodeSize(root);
+  const centerX = 360;
+  const centerY = 250;
+  const firstLevel = childrenByParent.get(root.id) ?? [];
+  const firstCount = Math.max(1, firstLevel.length);
+  const firstRadiusX = 280;
+  const firstRadiusY = 185;
+  const laidOut = nodes.map((node) => ({ ...node }));
+  const byId = new Map(laidOut.map((node) => [node.id, node]));
+
+  const rootNode = byId.get(root.id);
+  if (rootNode && !positions.has(rootNode.id)) {
+    rootNode.x = centerX - rootSize / 2;
+    rootNode.y = centerY - rootSize / 2;
+  }
+
+  firstLevel.forEach((node, i) => {
+    const current = byId.get(node.id);
+    if (!current || positions.has(current.id)) return;
+    const angle = -Math.PI / 2 + (i / firstCount) * Math.PI * 2;
+    const size = mindmapNodeSize(current);
+    current.x = centerX + Math.cos(angle) * firstRadiusX - size / 2;
+    current.y = centerY + Math.sin(angle) * firstRadiusY - size / 2;
+  });
+
+  for (const parent of firstLevel) {
+    const parentNode = byId.get(parent.id);
+    const children = childrenByParent.get(parent.id) ?? [];
+    if (!parentNode || children.length === 0) continue;
+    const parentSize = mindmapNodeSize(parentNode);
+    const parentCenterX = parentNode.x + parentSize / 2;
+    const parentCenterY = parentNode.y + parentSize / 2;
+    const angleFromRoot = Math.atan2(parentCenterY - centerY, parentCenterX - centerX);
+    const spread = Math.min(Math.PI * 0.75, Math.PI * 0.28 * Math.max(1, children.length - 1));
+    children.forEach((child, childIndex) => {
+      const current = byId.get(child.id);
+      if (!current || positions.has(current.id)) return;
+      const childSize = mindmapNodeSize(current);
+      const childAngle = angleFromRoot - spread / 2 + (children.length === 1 ? spread / 2 : (childIndex / (children.length - 1)) * spread);
+      current.x = parentCenterX + Math.cos(childAngle) * 145 - childSize / 2;
+      current.y = parentCenterY + Math.sin(childAngle) * 125 - childSize / 2;
+    });
+  }
+
+  return laidOut.map((node) => {
+    const pos = positions.get(node.id);
+    return pos ? { ...node, x: pos.x, y: pos.y } : node;
+  });
+}
+
 function parseMindmap(code: string): MindmapModel | null {
   const lines = code.split('\n');
   const head = lines.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim();
@@ -238,21 +310,21 @@ function parseMindmap(code: string): MindmapModel | null {
       label: cleanMindmapLabel(trimmed),
       parentId,
       depth,
-      x: pos?.x ?? 80 + depth * 210,
-      y: pos?.y ?? 70 + nodes.length * 86,
-      color: colors.get(id) ?? MINDMAP_COLORS[0],
+      x: pos?.x ?? 0,
+      y: pos?.y ?? 0,
+      color: colors.get(id) ?? defaultMindmapColor(depth),
     });
     parentByDepth.set(depth, id);
   }
 
-  return nodes.length ? { nodes } : null;
+  return nodes.length ? { nodes: layoutMindmapNodes(nodes, positions) } : null;
 }
 
 function serializeMindmap(model: MindmapModel): string {
   const lines = ['mindmap'];
   for (const node of model.nodes) lines.push(`%% dv-mm-pos: ${node.id} ${Math.round(node.x)} ${Math.round(node.y)}`);
   for (const node of model.nodes) {
-    if (node.color !== MINDMAP_COLORS[0]) lines.push(`%% dv-mm-color: ${node.id} ${node.color}`);
+    if (node.color !== defaultMindmapColor(node.depth)) lines.push(`%% dv-mm-color: ${node.id} ${node.color}`);
   }
   for (const node of model.nodes) {
     const indent = '  '.repeat(node.depth + 1);
@@ -798,8 +870,8 @@ function MindmapVisualEditor({
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
-  const width = Math.max(760, ...model.nodes.map((node) => node.x + MINDMAP_W + 220));
-  const height = Math.max(360, ...model.nodes.map((node) => node.y + MINDMAP_H + 120));
+  const width = Math.max(820, ...model.nodes.map((node) => node.x + mindmapNodeSize(node) + 180));
+  const height = Math.max(560, ...model.nodes.map((node) => node.y + mindmapNodeSize(node) + 160));
 
   const commitLabel = (nodeId: string, label: string): void => {
     const next = {
@@ -852,26 +924,29 @@ function MindmapVisualEditor({
             if (!node.parentId) return null;
             const parent = nodeById.get(node.parentId);
             if (!parent) return null;
-            const x1 = parent.x + MINDMAP_W;
-            const y1 = parent.y + MINDMAP_H / 2;
-            const x2 = node.x;
-            const y2 = node.y + MINDMAP_H / 2;
-            const midX = (x1 + x2) / 2;
+            const parentSize = mindmapNodeSize(parent);
+            const nodeSize = mindmapNodeSize(node);
+            const x1 = parent.x + parentSize / 2;
+            const y1 = parent.y + parentSize / 2;
+            const x2 = node.x + nodeSize / 2;
+            const y2 = node.y + nodeSize / 2;
             return (
               <path
                 key={`${node.parentId}-${node.id}`}
                 className="dv-mindmap-edge"
-                d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+                d={`M ${x1} ${y1} L ${x2} ${y2}`}
               />
             );
           })}
         </svg>
-        {model.nodes.map((node) => (
-          <div
-            key={node.id}
-            className={`dv-mindmap-node dv-mindmap-node--depth-${Math.min(node.depth, 3)}`}
-            style={{ left: node.x, top: node.y, width: MINDMAP_W, minHeight: MINDMAP_H, background: node.color }}
-          >
+        {model.nodes.map((node) => {
+          const size = mindmapNodeSize(node);
+          return (
+            <div
+              key={node.id}
+              className={`dv-mindmap-node dv-mindmap-node--depth-${Math.min(node.depth, 3)}`}
+              style={{ left: node.x, top: node.y, width: size, height: size, background: node.color }}
+            >
             <button
               type="button"
               className="dv-mindmap-drag-handle"
@@ -945,8 +1020,9 @@ function MindmapVisualEditor({
                 {node.label}
               </button>
             )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
