@@ -1554,7 +1554,7 @@ function SequenceVisualEditor({
       }}
     >
       <div className="dv-sequence-scroll-controls">
-        <button type="button" title="Add participant" onClick={addParticipant}>
+        <button type="button" title="Add participant" disabled={connectFrom !== null} onClick={addParticipant}>
           <Plus size={15} />
         </button>
         <button type="button" title="Scroll left" onClick={() => scrollCanvas(-1)}>
@@ -1683,6 +1683,16 @@ function SequenceVisualEditor({
               connectFrom === participant.id ? ' dv-sequence-node--connecting' : ''
             }${connectFrom && connectFrom !== participant.id ? ' dv-sequence-node--targetable' : ''}`}
             style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
+            onClick={(e) => {
+              if (!connectFrom) return;
+              e.preventDefault();
+              e.stopPropagation();
+              if (connectFrom === participant.id) {
+                setConnectFrom(null);
+                return;
+              }
+              addInteraction(participant.id);
+            }}
           >
             <button
               type="button"
