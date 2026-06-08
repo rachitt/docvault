@@ -3,11 +3,15 @@ import type {
   Doc,
   DocMeta,
   Product,
-  SearchHit,
   ThemeMode,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
+import type {
+  EmbeddingStatus,
+  SearchMode,
+  UnifiedHit,
+} from '../shared/ipc';
 
 export type NavView =
   | 'home'
@@ -19,7 +23,7 @@ export type NavView =
   | 'tags'
   | 'search'
   | 'doc';
-export type RightTab = 'outline' | 'links' | 'ai';
+export type RightTab = 'outline' | 'links' | 'related' | 'ai';
 
 /** Resolve the effective light/dark theme, expanding 'system' via the OS. */
 function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
@@ -47,6 +51,8 @@ interface State {
   tagFilter: string | null;
   /** Query backing the full-page search results view. */
   searchQuery: string;
+  /** Active search strategy (keyword / semantic / hybrid). Shared by palette + page. */
+  searchMode: SearchMode;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -70,7 +76,16 @@ interface State {
   setView: (v: NavView) => void;
   setRightTab: (t: RightTab) => void;
   setPalette: (open: boolean) => void;
-  search: (q: string) => Promise<SearchHit[]>;
+  /** Run a search using the current `searchMode` (or an explicit override). */
+  search: (q: string, mode?: SearchMode) => Promise<UnifiedHit[]>;
+  /** Switch the active search mode (keyword / semantic / hybrid). */
+  setSearchMode: (mode: SearchMode) => void;
+  /** Nearest-neighbour docs for the given doc id (semantic related reading). */
+  relatedDocs: (id: string) => Promise<UnifiedHit[]>;
+  /** Poll background embedding/backfill progress. */
+  embeddingStatus: () => Promise<EmbeddingStatus>;
+  /** Embed every indexed doc still lacking passage embeddings. */
+  backfillEmbeddings: () => Promise<{ processed: number } & EmbeddingStatus>;
   /** Open the Tags browser, optionally pre-selecting a tag. */
   openTags: (tag?: string | null) => void;
   setTagFilter: (tag: string | null) => void;
@@ -105,6 +120,7 @@ export const useStore = create<State>((set, get) => ({
   resolvedTheme: 'light',
   tagFilter: null,
   searchQuery: '',
+  searchMode: 'hybrid',
 
   refresh: async () => {
     try {
@@ -215,7 +231,18 @@ export const useStore = create<State>((set, get) => ({
   setView: (v) => set({ view: v }),
   setRightTab: (t) => set({ rightTab: t }),
   setPalette: (open) => set({ paletteOpen: open }),
-  search: (q) => api().search({ query: q, limit: 30 }),
+  search: (q, mode) => {
+    // Semantic/hybrid are only meaningful when semantic indexing is enabled;
+    // fall back to keyword (fts) otherwise so search always works.
+    const enabled = get().config?.semanticEnabled ?? true;
+    const requested = mode ?? get().searchMode;
+    const effective = enabled ? requested : 'fts';
+    return api().search({ query: q, limit: 30, mode: effective });
+  },
+  setSearchMode: (mode) => set({ searchMode: mode }),
+  relatedDocs: (id) => api().relatedDocs(id, 8),
+  embeddingStatus: () => api().embeddingStatus(),
+  backfillEmbeddings: () => api().backfillEmbeddings(),
   openTags: (tag = null) => set({ view: 'tags', tagFilter: tag }),
   setTagFilter: (tag) => set({ tagFilter: tag }),
   openSearch: (q) => set({ view: 'search', searchQuery: q, paletteOpen: false }),

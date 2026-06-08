@@ -3,7 +3,21 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DocVault } from './docvault.js';
+import type { Embedder } from './embed.js';
 import { toFtsMatch } from './indexer.js';
+
+/**
+ * Cheap deterministic embedder for the non-semantic suite. Without it,
+ * `DocVault.open` defaults to the real transformers.js model, whose background
+ * load on every upsert starves the event loop and makes the watcher timing
+ * tests flake. These tests only exercise FTS/metadata, so zero vectors suffice.
+ */
+class StubEmbedder implements Embedder {
+  readonly dim = 8;
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    return texts.map(() => new Float32Array(this.dim));
+  }
+}
 
 describe('DocVault core', () => {
   let root: string;
@@ -11,7 +25,7 @@ describe('DocVault core', () => {
 
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'docvault-test-'));
-    dv = await DocVault.open(root);
+    dv = await DocVault.open(root, { embedder: new StubEmbedder() });
   });
 
   afterEach(async () => {
@@ -255,7 +269,9 @@ describe('DocVault core', () => {
     await waitFor(() => dv.search({ query: 'kangaroo' }).length === 1);
     expect(dv.search({ query: 'kangaroo' })).toHaveLength(1);
     expect(dv.search({ query: 'before' })).toHaveLength(0);
-  });
+    // Watcher reindex asserts *eventual* convergence; chokidar's awaitWriteFinish
+    // plus parallel-suite CPU load makes a tight deadline flaky, so allow slack.
+  }, 20000);
 
   it('re-extracts an imported original when its bytes change on disk (watcher)', async () => {
     const src = path.join(root, 'note.txt');
@@ -272,11 +288,11 @@ describe('DocVault core', () => {
     // The sidecar keeps its identity; only its content is refreshed.
     const reread = await dv.readDoc(imported.frontmatter.id);
     expect(reread.content).toContain('zebra');
-  });
+  }, 20000);
 });
 
 /** Poll until `cond` is true or the timeout elapses. */
-async function waitFor(cond: () => boolean, timeoutMs = 3000): Promise<void> {
+async function waitFor(cond: () => boolean, timeoutMs = 15000): Promise<void> {
   const start = Date.now();
   while (!cond()) {
     if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');

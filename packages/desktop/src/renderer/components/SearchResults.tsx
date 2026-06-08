@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileText, Search } from 'lucide-react';
-import type { SearchHit } from '@docvault/core';
+import type { UnifiedHit } from '../../shared/ipc';
 import { useStore } from '../store';
-import { Snippet } from './Snippet';
+import { HitSnippet } from './HitSnippet';
+import { SearchModeToggle } from './SearchModeToggle';
 
 const DEBOUNCE_MS = 200;
 
@@ -15,8 +16,9 @@ export function SearchResults(): React.JSX.Element {
   const seed = useStore((s) => s.searchQuery);
   const search = useStore((s) => s.search);
   const openDoc = useStore((s) => s.openDoc);
+  const searchMode = useStore((s) => s.searchMode);
   const [q, setQ] = useState(seed);
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hits, setHits] = useState<UnifiedHit[]>([]);
   const [active, setActive] = useState(0);
   const [searched, setSearched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -47,12 +49,13 @@ export function SearchResults(): React.JSX.Element {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [q, search]);
+    // searchMode is a dep so flipping keyword/semantic/hybrid re-runs the query.
+  }, [q, search, searchMode]);
 
   return (
     <div className="mx-auto max-w-3xl px-12 py-10">
       <h1 className="mb-4 text-3xl font-bold text-neutral-900 dark:text-neutral-100">Search</h1>
-      <div className="mb-6 flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 dark:bg-neutral-900">
+      <div className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--dv-border)] bg-white px-3 py-2 dark:bg-neutral-900">
         <Search size={18} className="text-neutral-400" />
         <input
           ref={inputRef}
@@ -73,6 +76,9 @@ export function SearchResults(): React.JSX.Element {
           className="flex-1 bg-transparent text-base text-neutral-800 outline-none dark:text-neutral-100"
         />
       </div>
+      <div className="mb-6">
+        <SearchModeToggle />
+      </div>
 
       <div className="flex flex-col gap-1">
         {hits.map((h, i) => (
@@ -90,7 +96,7 @@ export function SearchResults(): React.JSX.Element {
             <span className="min-w-0 flex-1">
               <span className="block font-medium text-neutral-800 dark:text-neutral-100">{h.title}</span>
               <span className="mt-0.5 block text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-                <Snippet text={h.snippet} />
+                <HitSnippet hit={h} />
               </span>
               <span className="mt-1 block text-xs text-neutral-400">
                 {h.product ?? 'source'}

@@ -78,6 +78,11 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   h(CH.listTrash, () => call('list_trash'));
   h(CH.restoreTrash, (trashPath: string) => call('restore_trash', { trash_path: trashPath }));
   h(CH.search, (opts: Record<string, unknown>) => call('search_docs', opts));
+  h(CH.relatedDocs, (id: string, limit?: number) =>
+    call('related_docs', { id, ...(limit ? { limit } : {}) }),
+  );
+  h(CH.embeddingStatus, () => call('embedding_status'));
+  h(CH.backfillEmbeddings, () => call('backfill_embeddings'));
   h(CH.backlinks, (id: string) => call('get_backlinks', { id }));
   h(CH.listTags, () => call('list_tags'));
 

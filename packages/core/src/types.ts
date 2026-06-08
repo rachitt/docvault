@@ -110,6 +110,12 @@ export interface VaultConfig {
   aiBackend: 'claude' | 'codex';
   /** Stream the assistant's output token-by-token. Off by default. */
   aiStreaming: boolean;
+  /**
+   * Enable semantic (vector) search + related-docs. When on, the app offers
+   * semantic/hybrid search modes and backfills passage embeddings. On by
+   * default — hybrid is the best general search experience.
+   */
+  semanticEnabled: boolean;
   /** UI color theme; 'system' tracks the OS appearance. */
   theme: ThemeMode;
 }
@@ -121,5 +127,6 @@ export const DEFAULT_CONFIG: VaultConfig = {
   trash: [],
   aiBackend: 'claude',
   aiStreaming: false,
+  semanticEnabled: true,
   theme: 'system',
 };

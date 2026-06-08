@@ -97,15 +97,35 @@ async function main(): Promise<void> {
     {
       title: 'Search documents',
       description:
-        'Full-text search across all docs (incl. imported PDF/DOCX/TXT text). Returns ranked hits with snippets.',
+        'Search across all docs (incl. imported PDF/DOCX/TXT text). `mode` selects how: ' +
+        '"fts" = exact full-text (bm25, highlighted snippets); ' +
+        '"semantic" = meaning-based vector search (finds paraphrases, returns the best passage); ' +
+        '"hybrid" (default) = Reciprocal Rank Fusion of both, the best general choice. ' +
+        'Semantic/hybrid run a local embedding model on first use (one-time model download).',
       inputSchema: {
-        query: nonEmpty.describe('Search text (plain words; FTS operators are treated literally)'),
+        query: nonEmpty.describe('Search text. In "fts" mode, FTS operators are treated literally.'),
+        mode: z
+          .enum(['fts', 'semantic', 'hybrid'])
+          .optional()
+          .describe('Search strategy; defaults to "hybrid".'),
         product: z.string().optional(),
         tag: z.string().optional(),
         limit: z.number().int().positive().max(100).optional(),
       },
     },
-    tool((args) => dv.search(args)),
+    tool(({ query, mode = 'hybrid', product, tag, limit }) => {
+      const filter = {
+        ...(product ? { product } : {}),
+        ...(tag ? { tag } : {}),
+      };
+      if (mode === 'fts') {
+        return dv.search({ query, ...filter, ...(limit ? { limit } : {}) });
+      }
+      const k = limit ?? 25;
+      return mode === 'semantic'
+        ? dv.searchSemantic(query, { k, ...filter })
+        : dv.searchHybrid(query, { k, ...filter });
+    }),
   );
 
   server.registerTool(
@@ -212,6 +232,57 @@ async function main(): Promise<void> {
       inputSchema: { id: nonEmpty },
     },
     tool(({ id }) => dv.backlinks(id)),
+  );
+
+  server.registerTool(
+    'related_docs',
+    {
+      title: 'Related documents',
+      description:
+        'Find documents semantically related to an already-indexed doc (nearest neighbours by ' +
+        'meaning, using its stored passage embeddings — no re-embedding). Returns each related ' +
+        "doc's best matching passage, heading breadcrumb, and similarity score. Empty if the doc " +
+        'has not been embedded yet (semantic indexing disabled or still backfilling).',
+      inputSchema: {
+        id: nonEmpty.describe('Doc id (ULID) of the open/source doc'),
+        limit: z.number().int().positive().max(50).optional().describe('Max neighbours (default 8)'),
+      },
+    },
+    tool(({ id, limit }) => dv.relatedDocs(id, limit ? { k: limit } : {})),
+  );
+
+  server.registerTool(
+    'embedding_status',
+    {
+      title: 'Embedding status',
+      description:
+        'Snapshot of semantic-index progress: how many indexed docs still lack passage embeddings ' +
+        '(`pending`) out of `total`, plus how many embedding jobs are in flight. Cheap to poll for ' +
+        'a backfill progress indicator. `error` carries (and clears) the last embedding failure, ' +
+        'e.g. the first-run local model download failing offline.',
+    },
+    tool(() => {
+      const err = dv.takeEmbedError();
+      return {
+        ...dv.embeddingStatus(),
+        error: err ? (err instanceof Error ? err.message : String(err)) : null,
+      };
+    }),
+  );
+
+  server.registerTool(
+    'backfill_embeddings',
+    {
+      title: 'Backfill embeddings',
+      description:
+        'Embed every indexed doc that currently lacks passage embeddings (e.g. after enabling ' +
+        'semantic search, or after a reindex). Runs the local embedding model; the first run ' +
+        'downloads it. Returns the number of docs processed. Poll embedding_status for progress.',
+    },
+    tool(async () => {
+      const processed = await dv.backfillEmbeddings();
+      return { processed, ...dv.embeddingStatus() };
+    }),
   );
 
   server.registerTool(

@@ -1,5 +1,16 @@
 export { DocVault } from './docvault.js';
-export type { CreateDiagramInput } from './docvault.js';
+export type { CreateDiagramInput, DocVaultOptions } from './docvault.js';
+export { chunkMarkdown } from './chunk.js';
+export type { Chunk, ChunkOptions } from './chunk.js';
+export {
+  TransformersEmbedder,
+  cosineSimilarity,
+  vectorToBlob,
+  blobToVector,
+  EMBED_DIM,
+  EMBED_MODEL,
+} from './embed.js';
+export type { Embedder } from './embed.js';
 export {
   validateMermaid,
   detectDiagramType,
@@ -17,6 +28,7 @@ export type {
 export { Vault } from './vault.js';
 export { DocStore, assertSafeSegment, parseDoc, serializeDoc, slugify } from './doc.js';
 export { Indexer, toFtsMatch } from './indexer.js';
+export type { StoredChunk, SemanticHit, HybridHit } from './indexer.js';
 export { VaultWatcher } from './watcher.js';
 export { extractWikilinks } from './links.js';
 export { importFile, isImportable } from './import/index.js';
