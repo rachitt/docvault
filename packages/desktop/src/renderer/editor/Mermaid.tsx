@@ -50,6 +50,29 @@ type DragState = {
   model: FlowchartModel;
 };
 
+type MindmapNode = {
+  id: string;
+  label: string;
+  parentId: string | null;
+  depth: number;
+  x: number;
+  y: number;
+  color: string;
+};
+
+type MindmapModel = {
+  nodes: MindmapNode[];
+};
+
+type MindmapDragState = {
+  nodeId: string;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  model: MindmapModel;
+};
+
 const NODE_W = 132;
 const NODE_H = 54;
 const DECISION_SIZE = 112;
@@ -57,6 +80,11 @@ const POS_RE = /^%%\s*dv-pos:\s*([A-Za-z][\w-]*)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:
 const NODE_RE = /([A-Za-z][\w-]*)(?:\[(.*?)\]|\{(.*?)\}|\((.*?)\))?/g;
 const EDGE_RE =
   /^\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?\s*--(?:(?:\|([^|]+)\|>)|(?:>\s*\|([^|]+)\|)|>)\s*([A-Za-z][\w-]*)(?:\[(?:.*?)\]|\{(?:.*?)\}|\((?:.*?)\))?/;
+const MINDMAP_POS_RE = /^%%\s*dv-mm-pos:\s*(m\d+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/;
+const MINDMAP_COLOR_RE = /^%%\s*dv-mm-color:\s*(m\d+)\s+(#[0-9a-fA-F]{6})\s*$/;
+const MINDMAP_W = 150;
+const MINDMAP_H = 48;
+const MINDMAP_COLORS = ['#fbf6e8', '#e8f2ff', '#e9f8ea', '#fff1d8', '#f5e9ff', '#ffe8e8'] as const;
 
 function escapeLabel(label: string): string {
   return label.replace(/]/g, ')').replace(/}/g, ')').replace(/\n/g, ' ').trim() || 'Step';
@@ -165,6 +193,73 @@ function parseFlowchart(code: string): FlowchartModel | null {
     nodes: laidOut,
     edges,
   };
+}
+
+function cleanMindmapLabel(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^([A-Za-z][\w-]*)\(\((.*)\)\)$/, '$2')
+    .replace(/^\(\((.*)\)\)$/, '$1')
+    .replace(/^\((.*)\)$/, '$1')
+    .trim();
+}
+
+function escapeMindmapLabel(label: string): string {
+  return label.replace(/\n/g, ' ').trim() || 'Idea';
+}
+
+function parseMindmap(code: string): MindmapModel | null {
+  const lines = code.split('\n');
+  const head = lines.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim();
+  if (!/^mindmap\b/i.test(head ?? '')) return null;
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const colors = new Map<string, string>();
+  for (const line of lines) {
+    const pos = MINDMAP_POS_RE.exec(line.trim());
+    if (pos) positions.set(pos[1] as string, { x: Number(pos[2]), y: Number(pos[3]) });
+    const color = MINDMAP_COLOR_RE.exec(line.trim());
+    if (color) colors.set(color[1] as string, color[2] as string);
+  }
+
+  const nodes: MindmapNode[] = [];
+  const parentByDepth = new Map<number, string>();
+  let index = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || /^mindmap\b/i.test(trimmed)) continue;
+    const indent = line.match(/^\s*/)?.[0].length ?? 0;
+    const depth = Math.max(0, Math.round(indent / 2) - 1);
+    const id = `m${index++}`;
+    const parentId = depth === 0 ? null : parentByDepth.get(depth - 1) ?? null;
+    const pos = positions.get(id);
+    nodes.push({
+      id,
+      label: cleanMindmapLabel(trimmed),
+      parentId,
+      depth,
+      x: pos?.x ?? 80 + depth * 210,
+      y: pos?.y ?? 70 + nodes.length * 86,
+      color: colors.get(id) ?? MINDMAP_COLORS[0],
+    });
+    parentByDepth.set(depth, id);
+  }
+
+  return nodes.length ? { nodes } : null;
+}
+
+function serializeMindmap(model: MindmapModel): string {
+  const lines = ['mindmap'];
+  for (const node of model.nodes) lines.push(`%% dv-mm-pos: ${node.id} ${Math.round(node.x)} ${Math.round(node.y)}`);
+  for (const node of model.nodes) {
+    if (node.color !== MINDMAP_COLORS[0]) lines.push(`%% dv-mm-color: ${node.id} ${node.color}`);
+  }
+  for (const node of model.nodes) {
+    const indent = '  '.repeat(node.depth + 1);
+    const label = escapeMindmapLabel(node.label);
+    lines.push(node.depth === 0 ? `${indent}root((${label}))` : `${indent}${label}`);
+  }
+  return lines.join('\n');
 }
 
 function serializeFlowchart(model: FlowchartModel): string {
@@ -686,6 +781,177 @@ function FlowchartVisualEditor({
   );
 }
 
+function MindmapVisualEditor({
+  code,
+  onChange,
+}: {
+  code: string;
+  onChange: (next: string) => void;
+}): React.JSX.Element | null {
+  const model = useMemo(() => parseMindmap(code), [code]);
+  const [editingNode, setEditingNode] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [drag, setDrag] = useState<MindmapDragState | null>(null);
+  const [colorNode, setColorNode] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  if (!model) return null;
+
+  const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
+  const width = Math.max(760, ...model.nodes.map((node) => node.x + MINDMAP_W + 220));
+  const height = Math.max(360, ...model.nodes.map((node) => node.y + MINDMAP_H + 120));
+
+  const commitLabel = (nodeId: string, label: string): void => {
+    const next = {
+      nodes: model.nodes.map((node) =>
+        node.id === nodeId ? { ...node, label: escapeMindmapLabel(label) } : node,
+      ),
+    };
+    onChange(serializeMindmap(next));
+    setEditingNode(null);
+  };
+
+  const moveNode = (clientX: number, clientY: number): void => {
+    if (!drag) return;
+    const dx = clientX - drag.startX;
+    const dy = clientY - drag.startY;
+    const next = {
+      nodes: drag.model.nodes.map((node) =>
+        node.id === drag.nodeId
+          ? {
+              ...node,
+              x: Math.max(16, drag.originX + dx),
+              y: Math.max(16, drag.originY + dy),
+            }
+          : node,
+      ),
+    };
+    onChange(serializeMindmap(next));
+  };
+
+  const setNodeColor = (nodeId: string, color: string): void => {
+    const next = {
+      nodes: model.nodes.map((node) => (node.id === nodeId ? { ...node, color } : node)),
+    };
+    onChange(serializeMindmap(next));
+    setColorNode(null);
+  };
+
+  return (
+    <div
+      ref={canvasRef}
+      className="dv-mindmap-editor"
+      tabIndex={0}
+      onPointerMove={(e) => moveNode(e.clientX, e.clientY)}
+      onPointerUp={() => setDrag(null)}
+      onPointerCancel={() => setDrag(null)}
+    >
+      <div className="dv-mindmap-canvas" style={{ width, height }}>
+        <svg className="dv-mindmap-edges" width={width} height={height} aria-hidden="true">
+          {model.nodes.map((node) => {
+            if (!node.parentId) return null;
+            const parent = nodeById.get(node.parentId);
+            if (!parent) return null;
+            const x1 = parent.x + MINDMAP_W;
+            const y1 = parent.y + MINDMAP_H / 2;
+            const x2 = node.x;
+            const y2 = node.y + MINDMAP_H / 2;
+            const midX = (x1 + x2) / 2;
+            return (
+              <path
+                key={`${node.parentId}-${node.id}`}
+                className="dv-mindmap-edge"
+                d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+              />
+            );
+          })}
+        </svg>
+        {model.nodes.map((node) => (
+          <div
+            key={node.id}
+            className={`dv-mindmap-node dv-mindmap-node--depth-${Math.min(node.depth, 3)}`}
+            style={{ left: node.x, top: node.y, width: MINDMAP_W, minHeight: MINDMAP_H, background: node.color }}
+          >
+            <button
+              type="button"
+              className="dv-mindmap-drag-handle"
+              title="Drag node"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setEditingNode(null);
+                setColorNode(null);
+                setDrag({
+                  nodeId: node.id,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  originX: node.x,
+                  originY: node.y,
+                  model,
+                });
+              }}
+            >
+              <GripVertical size={13} />
+            </button>
+            <button
+              type="button"
+              className="dv-mindmap-color-button"
+              title="Change node color"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingNode(null);
+                setColorNode(colorNode === node.id ? null : node.id);
+              }}
+            >
+              <span style={{ background: node.color }} />
+            </button>
+            {colorNode === node.id ? (
+              <div className="dv-mindmap-colors" aria-label="Node colors">
+                {MINDMAP_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    title={color === MINDMAP_COLORS[0] ? 'Default' : color}
+                    className={node.color === color ? 'dv-mindmap-color--selected' : ''}
+                    style={{ background: color }}
+                    onClick={() => setNodeColor(node.id, color)}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {editingNode === node.id ? (
+              <input
+                className="dv-mindmap-node-input"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => commitLabel(node.id, draft)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitLabel(node.id, draft);
+                  if (e.key === 'Escape') setEditingNode(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="dv-mindmap-node-label"
+                title="Rename mindmap node"
+                onClick={() => {
+                  setDraft(node.label);
+                  setColorNode(null);
+                  setEditingNode(node.id);
+                }}
+              >
+                {node.label}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Mermaid diagram block. Renders the diagram from its `code` prop and lets the
  * user edit the source inline. Serialized to a ```mermaid fenced code block by
@@ -707,6 +973,7 @@ export const Mermaid = createReactBlockSpec(
       // eslint-disable-next-line react-hooks/rules-of-hooks
       const [draft, setDraft] = useState(code);
       const supportsVisualFlowchart = parseFlowchart(code) !== null;
+      const supportsVisualMindmap = parseMindmap(code) !== null;
 
       return (
         <div className="dv-mermaid" contentEditable={false}>
@@ -752,6 +1019,11 @@ export const Mermaid = createReactBlockSpec(
             <>
               {supportsVisualFlowchart ? (
                 <FlowchartVisualEditor
+                  code={code}
+                  onChange={(next) => editor.updateBlock(block, { props: { code: next } })}
+                />
+              ) : supportsVisualMindmap ? (
+                <MindmapVisualEditor
                   code={code}
                   onChange={(next) => editor.updateBlock(block, { props: { code: next } })}
                 />
