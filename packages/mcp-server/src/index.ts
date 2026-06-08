@@ -397,6 +397,61 @@ async function main(): Promise<void> {
     ),
   );
 
+  // --- Templates ---------------------------------------------------------
+
+  // Seed the starter templates on startup so list_templates is useful out of the
+  // box. Never overwrites a user-edited file.
+  await dv.seedStarterTemplates().catch((err) => {
+    console.error('[docvault-mcp] template seed failed:', err);
+  });
+
+  server.registerTool(
+    'list_templates',
+    {
+      title: 'List templates',
+      description:
+        'List document templates from the vault templates/ folder (Meeting Notes, PRD, Runbook, ADR, Spec, plus any you save). Returns each template id, title, description, and the {{variables}} it declares. Instantiate one with create_doc_from_template.',
+    },
+    tool(() => dv.listTemplates()),
+  );
+
+  server.registerTool(
+    'create_doc_from_template',
+    {
+      title: 'Create doc from template',
+      description:
+        'Create a new doc by rendering a template: fills {{title}}, {{date}}, {{author}}, and any custom {{vars}}, then creates the doc under a product (indexed + searchable like any other). Use list_templates to see available templates and their variables. Unfilled placeholders render as blank.',
+      inputSchema: {
+        template_id: slug.describe('Template id from list_templates, e.g. "meeting-notes"'),
+        product: slug.describe('Product slug the new doc lands under'),
+        title: nonEmpty.describe('Title for the new doc (also fills {{title}})'),
+        author: z.string().optional().describe('Fills the {{author}} placeholder'),
+        date: z.string().optional().describe('Fills {{date}}; defaults to today (YYYY-MM-DD)'),
+        vars: z
+          .record(z.string())
+          .optional()
+          .describe('Custom {{variable}} values, keyed by name'),
+        tags: z.array(z.string()).optional(),
+        status: statusEnum.optional(),
+      },
+    },
+    tool(({ template_id, ...rest }) => dv.createDocFromTemplate(template_id, rest)),
+  );
+
+  server.registerTool(
+    'save_as_template',
+    {
+      title: 'Save doc as template',
+      description:
+        "Persist an existing doc's body verbatim as a new reusable template under templates/ (any {{placeholders}} already present are preserved). The template id is derived from `name`. Returns the saved template.",
+      inputSchema: {
+        id_or_path: relPath.describe('Doc id (ULID) or vault-relative path of the source doc'),
+        name: nonEmpty.describe('Human-readable template name; the id is slugified from this'),
+      },
+    },
+    tool(({ id_or_path, name }) => dv.saveAsTemplate(id_or_path, { name })),
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('[docvault-mcp] connected over stdio');

@@ -4,6 +4,8 @@ import type {
   DocMeta,
   Product,
   SearchOptions,
+  Template,
+  TemplateMeta,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
@@ -60,7 +62,12 @@ export const CH = {
   backfillEmbeddings: 'dv:backfillEmbeddings',
   backlinks: 'dv:backlinks',
   listTags: 'dv:listTags',
+  listTemplates: 'dv:listTemplates',
+  createDocFromTemplate: 'dv:createDocFromTemplate',
+  saveAsTemplate: 'dv:saveAsTemplate',
   importFile: 'dv:importFile',
+  exportDoc: 'dv:exportDoc',
+  exportBulk: 'dv:exportBulk',
   openOriginal: 'dv:openOriginal',
   readSource: 'dv:readSource',
   getConfig: 'dv:getConfig',
@@ -76,11 +83,35 @@ export const EV = {
   vaultChanged: 'dv:vaultChanged',
   aiChunk: 'dv:aiChunk',
   aiDone: 'dv:aiDone',
+  exportProgress: 'dv:exportProgress',
 } as const;
+
+/** Document export formats supported by the export pipeline. */
+export type ExportFormat = 'html' | 'pdf' | 'docx';
+
+/** Result of an export request; `canceled` when the user dismissed the dialog. */
+export type ExportResult =
+  | { canceled: true }
+  | { canceled: false; path: string; count?: number };
+
+/** Progress tick during a bulk export. */
+export type ExportProgress = { done: number; total: number; title: string };
 
 export type UpdateDocPatch = {
   content?: string;
   title?: string;
+  tags?: string[];
+  status?: 'draft' | 'published' | 'archived';
+};
+
+/** Args for instantiating a doc from a template (snake_case matches the MCP tool). */
+export type CreateDocFromTemplateArgs = {
+  template_id: string;
+  product: string;
+  title: string;
+  author?: string;
+  date?: string;
+  vars?: Record<string, string>;
   tags?: string[];
   status?: 'draft' | 'published' | 'archived';
 };
@@ -115,7 +146,26 @@ export interface DocVaultApi {
   backfillEmbeddings(): Promise<{ processed: number } & EmbeddingStatus>;
   backlinks(id: string): Promise<DocMeta[]>;
   listTags(): Promise<{ tag: string; count: number }[]>;
+  /** List document templates from the vault, each with its declared {{variables}}. */
+  listTemplates(): Promise<TemplateMeta[]>;
+  /** Instantiate a new doc by rendering a template's placeholders. */
+  createDocFromTemplate(args: CreateDocFromTemplateArgs): Promise<Doc>;
+  /** Save an existing doc's body verbatim as a new reusable template. */
+  saveAsTemplate(idOrPath: string, name: string): Promise<Template>;
   importFile(): Promise<Doc | null>;
+  /** Export one doc to a user-chosen file (HTML / PDF / DOCX), revealing it. */
+  exportDoc(idOrPath: string, format: ExportFormat): Promise<ExportResult>;
+  /**
+   * Export a product (or the whole vault when `product` is omitted) — either one
+   * file per doc into a chosen folder, or a single combined PDF.
+   */
+  exportBulk(opts: {
+    product?: string;
+    format: ExportFormat;
+    combined?: boolean;
+  }): Promise<ExportResult>;
+  /** Subscribe to bulk-export progress ticks. */
+  onExportProgress(cb: (p: ExportProgress) => void): () => void;
   openOriginal(relPath: string): Promise<void>;
   /** Read the raw bytes of an imported original (pdf/docx/txt) for in-app viewing. */
   readSource(relPath: string): Promise<Uint8Array>;

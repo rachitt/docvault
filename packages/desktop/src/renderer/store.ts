@@ -3,12 +3,16 @@ import type {
   Doc,
   DocMeta,
   Product,
+  TemplateMeta,
   ThemeMode,
   TrashEntry,
   VaultConfig,
 } from '@docvault/core';
 import type {
+  CreateDocFromTemplateArgs,
   EmbeddingStatus,
+  ExportFormat,
+  ExportProgress,
   SearchMode,
   UnifiedHit,
 } from '../shared/ipc';
@@ -53,6 +57,18 @@ interface State {
   searchQuery: string;
   /** Active search strategy (keyword / semantic / hybrid). Shared by palette + page. */
   searchMode: SearchMode;
+  /** True while an export is running; drives spinners / disabled buttons. */
+  exporting: boolean;
+  /** Latest bulk-export progress tick, or null when not bulk-exporting. */
+  exportProgress: ExportProgress | null;
+  /** Document templates (with declared variables) loaded from the vault. */
+  templates: TemplateMeta[];
+  /**
+   * Drives the new-doc modal (blank vs from-template + variable input). Null
+   * means closed. `product` pre-selects a product (from a per-product "+"),
+   * `templateId` pre-selects a template (from the Templates gallery).
+   */
+  newDocFor: { product?: string; templateId?: string } | null;
 
   refresh: () => Promise<void>;
   openDoc: (idOrPath: string) => Promise<void>;
@@ -61,6 +77,14 @@ interface State {
   saveCurrent: (content: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
+  /** Load the vault's document templates into state. */
+  loadTemplates: () => Promise<void>;
+  /** Open the new-doc modal (blank vs from-template). Null closes it. */
+  openNewDocPicker: (init: { product?: string; templateId?: string } | null) => void;
+  /** Instantiate a doc from a template and open it. */
+  createFromTemplate: (args: CreateDocFromTemplateArgs) => Promise<void>;
+  /** Save the open doc's body as a new reusable template. */
+  saveCurrentAsTemplate: (name: string) => Promise<void>;
   /** Soft-delete a single doc (moves it to trash). */
   trashDoc: (relPath: string) => Promise<void>;
   /** Soft-delete a product and all its docs (moves it to trash). */
@@ -68,6 +92,10 @@ interface State {
   /** Restore a trashed doc/product back to its original location. */
   restoreTrash: (trashPath: string) => Promise<void>;
   importFile: () => Promise<void>;
+  /** Export a single doc to a chosen file (HTML / PDF / DOCX). */
+  exportDoc: (idOrPath: string, format: ExportFormat) => Promise<void>;
+  /** Export a product (or whole vault) as per-doc files or a combined PDF. */
+  exportBulk: (opts: { product?: string; format: ExportFormat; combined?: boolean }) => Promise<void>;
   toggleStar: (docId: string) => Promise<void>;
   updateConfig: (patch: Partial<VaultConfig>) => Promise<void>;
   setTheme: (mode: ThemeMode) => Promise<void>;
@@ -121,16 +149,21 @@ export const useStore = create<State>((set, get) => ({
   tagFilter: null,
   searchQuery: '',
   searchMode: 'hybrid',
+  exporting: false,
+  exportProgress: null,
+  templates: [],
+  newDocFor: null,
 
   refresh: async () => {
     try {
-      const [products, docs, config, trash] = await Promise.all([
+      const [products, docs, config, trash, templates] = await Promise.all([
         api().listProducts(),
         api().listDocs(),
         api().getConfig(),
         api().listTrash(),
+        api().listTemplates(),
       ]);
-      set({ products, docs, config, trash, loading: false, error: null });
+      set({ products, docs, config, trash, templates, loading: false, error: null });
       get().applyTheme();
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : String(e) });
@@ -163,6 +196,29 @@ export const useStore = create<State>((set, get) => ({
   newProduct: async (title) => {
     await api().createProduct(slugify(title), { title });
     set({ products: await api().listProducts() });
+  },
+
+  loadTemplates: async () => {
+    set({ templates: await api().listTemplates() });
+  },
+
+  openNewDocPicker: (init) => set({ newDocFor: init }),
+
+  createFromTemplate: async (args) => {
+    const doc = await api().createDocFromTemplate(args);
+    set({
+      docs: await api().listDocs(),
+      products: await api().listProducts(),
+      newDocFor: null,
+    });
+    await get().openDoc(doc.frontmatter.id);
+  },
+
+  saveCurrentAsTemplate: async (name) => {
+    const cur = get().currentDoc;
+    if (!cur) return;
+    await api().saveAsTemplate(cur.frontmatter.id, name);
+    await get().loadTemplates();
   },
 
   trashDoc: async (relPath) => {
@@ -206,6 +262,30 @@ export const useStore = create<State>((set, get) => ({
     if (doc) {
       set({ docs: await api().listDocs() });
       await get().openDoc(doc.frontmatter.id);
+    }
+  },
+
+  exportDoc: async (idOrPath, format) => {
+    set({ exporting: true, error: null });
+    try {
+      await api().exportDoc(idOrPath, format);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ exporting: false });
+    }
+  },
+
+  exportBulk: async (opts) => {
+    set({ exporting: true, exportProgress: null, error: null });
+    const off = api().onExportProgress((p) => set({ exportProgress: p }));
+    try {
+      await api().exportBulk(opts);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      off();
+      set({ exporting: false, exportProgress: null });
     }
   },
 

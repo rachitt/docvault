@@ -283,6 +283,494 @@ body {
   max-width: 100%;
   height: auto;
 }
+html:not(.dv-text-toolbar-active) [role='toolbar'] {
+  display: none !important;
+}
+.dv-flow-editor {
+  position: relative;
+  overflow: auto;
+  padding: 1rem;
+  background:
+    linear-gradient(var(--dv-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dv-border) 1px, transparent 1px),
+    var(--dv-bg);
+  background-size: 24px 24px;
+  border-top: 1px solid var(--dv-border);
+}
+.dv-flow-editor:focus {
+  outline: none;
+}
+.dv-flow-canvas {
+  position: relative;
+  min-width: 100%;
+}
+.dv-flow-scroll-controls {
+  position: sticky;
+  top: 0.5rem;
+  left: calc(100% - 5.25rem);
+  z-index: 4;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dv-bg) 88%, white);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.1);
+}
+.dv-flow-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+}
+.dv-flow-scroll-controls button:hover {
+  background: var(--dv-sidebar);
+}
+.dv-flow-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dv-flow-edge {
+  fill: none;
+  stroke: var(--dv-diagram-accent);
+  stroke-width: 2;
+}
+.dv-flow-edge--selected {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--dv-diagram-accent) 42%, transparent));
+}
+.dv-flow-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.dv-flow-edges marker path {
+  fill: var(--dv-diagram-accent);
+}
+.dv-flow-edge-label {
+  fill: var(--dv-muted);
+  font-size: 0.75rem;
+  paint-order: stroke;
+  stroke: var(--dv-bg);
+  stroke-width: 4px;
+}
+.dv-flow-node {
+  position: absolute;
+  z-index: 1;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.5rem;
+  background: var(--dv-bg);
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-flow-node--decision {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.dv-flow-node--decision::before {
+  content: '';
+  position: absolute;
+  inset: 0.5rem;
+  z-index: -1;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.2rem;
+  background: var(--dv-bg);
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.08);
+  transform: rotate(45deg);
+}
+.dv-flow-node--decision .dv-flow-node-label,
+.dv-flow-node--decision .dv-flow-node-input {
+  max-width: 4.75rem;
+}
+.dv-flow-node--round {
+  border-radius: 999px;
+}
+.dv-flow-node--connecting {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dv-diagram-accent) 24%, transparent),
+    0 4px 14px rgba(16, 24, 40, 0.08);
+}
+.dv-flow-node--targetable {
+  border-style: dashed;
+}
+.dv-flow-node--targetable .dv-flow-node-label {
+  cursor: crosshair;
+}
+.dv-flow-drag-handle {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: grab;
+}
+.dv-flow-drag-handle:active {
+  cursor: grabbing;
+}
+.dv-flow-drag-handle:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
+.dv-flow-connect-node {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--dv-muted);
+  cursor: crosshair;
+}
+.dv-flow-connect-node:hover,
+.dv-flow-node--connecting .dv-flow-connect-node {
+  background: var(--dv-sidebar);
+  color: var(--dv-diagram-accent);
+}
+.dv-flow-add-node {
+  position: absolute;
+  top: 50%;
+  right: -0.75rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 999px;
+  background: var(--dv-bg);
+  color: var(--dv-diagram-accent);
+  cursor: pointer;
+  transform: translateY(-50%);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+.dv-flow-add-node:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
+.dv-flow-editor--vertical .dv-flow-add-node {
+  top: auto;
+  right: auto;
+  bottom: -0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.dv-flow-add-menu {
+  position: absolute;
+  top: calc(50% + 1.25rem);
+  right: -0.75rem;
+  z-index: 4;
+  display: grid;
+  min-width: 7.25rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 45%, transparent);
+  border-radius: 0.375rem;
+  background: var(--dv-bg);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.dv-flow-editor--vertical .dv-flow-add-menu {
+  top: calc(100% + 1rem);
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.dv-flow-add-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+.dv-flow-add-menu button:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-diagram-accent);
+}
+.dv-flow-node-label {
+  width: 100%;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: text;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.dv-flow-node-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--dv-diagram-accent);
+  outline: none;
+  background: transparent;
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.dv-mindmap-editor {
+  position: relative;
+  overflow: auto;
+  max-height: 30rem;
+  padding: 1rem;
+  border-top: 1px solid var(--dv-border);
+  background:
+    linear-gradient(var(--dv-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dv-border) 1px, transparent 1px),
+    var(--dv-bg);
+  background-size: 24px 24px;
+}
+.dv-mindmap-editor:focus {
+  outline: none;
+}
+.dv-mindmap-canvas {
+  position: relative;
+  min-width: 100%;
+}
+.dv-mindmap-scroll-controls {
+  position: sticky;
+  top: 0.5rem;
+  left: calc(100% - 7.25rem);
+  z-index: 4;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dv-bg) 88%, white);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.1);
+}
+.dv-mindmap-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+}
+.dv-mindmap-scroll-controls button:hover {
+  background: var(--dv-sidebar);
+}
+.dv-mindmap-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.dv-mindmap-edge {
+  fill: none;
+  stroke: #0b86b7;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.95;
+}
+.dv-mindmap-edge--selected {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, #0b86b7 48%, transparent));
+}
+.dv-mindmap-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.dv-mindmap-node {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem;
+  border: 2px solid #222222;
+  border-radius: 999px;
+  color: #1f2933;
+  box-shadow: none;
+}
+.dv-mindmap-node--depth-0 {
+  border-color: #0ea5d7;
+  color: #ffffff;
+  font-weight: 650;
+  font-size: 0.98rem;
+}
+.dv-mindmap-node--depth-1 {
+  border-color: #087fb1;
+  color: #ffffff;
+  font-size: 0.84rem;
+}
+.dv-mindmap-node--depth-2,
+.dv-mindmap-node--depth-3 {
+  background: #ffffff;
+  color: #1f2933;
+  font-size: 0.68rem;
+}
+.dv-mindmap-drag-handle {
+  position: absolute;
+  top: 0.35rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: currentColor;
+  opacity: 0.65;
+  cursor: grab;
+  transform: translateX(-50%);
+}
+.dv-mindmap-drag-handle:active {
+  cursor: grabbing;
+}
+.dv-mindmap-drag-handle:hover {
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 1;
+}
+.dv-mindmap-color-button {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.dv-mindmap-color-button span {
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.dv-mindmap-add-node {
+  position: absolute;
+  left: 50%;
+  bottom: -0.55rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: var(--dv-bg);
+  color: currentColor;
+  cursor: pointer;
+  transform: translateX(-50%);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+.dv-mindmap-add-node:hover {
+  background: var(--dv-sidebar);
+  color: var(--dv-text);
+}
+.dv-mindmap-colors {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0.25rem;
+  z-index: 3;
+  display: flex;
+  max-width: 13rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  gap: 0.35rem;
+  padding: 0.4rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 0.5rem;
+  background: var(--dv-bg);
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.dv-mindmap-colors button {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dv-diagram-accent) 40%, transparent);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+.dv-mindmap-color--selected {
+  box-shadow: 0 0 0 2px var(--dv-diagram-accent);
+}
+.dv-mindmap-node-label {
+  width: 100%;
+  min-height: 1.2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: text;
+  font: inherit;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.dv-mindmap-node-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--dv-diagram-accent);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: center;
+}
 .dv-mermaid-empty {
   padding: 1rem;
   color: var(--dv-muted);
