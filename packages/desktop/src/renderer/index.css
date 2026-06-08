@@ -825,6 +825,9 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
   overflow: visible;
   pointer-events: none;
 }
+.dv-sequence-lines foreignObject {
+  pointer-events: auto;
+}
 .dv-sequence-lifeline {
   stroke: var(--dv-diagram-accent);
   stroke-width: 2;
@@ -868,11 +871,38 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
   fill: var(--dv-diagram-accent);
 }
 .dv-sequence-message-label {
-  fill: var(--dv-text);
+  display: block;
+  width: 100%;
+  min-height: 1.3rem;
+  padding: 0 0.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--dv-bg) 82%, transparent);
+  color: var(--dv-text);
+  cursor: text;
+  font: inherit;
   font-size: 0.82rem;
-  paint-order: stroke;
-  stroke: var(--dv-bg);
-  stroke-width: 5px;
+  line-height: 1.25;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dv-sequence-message-label:hover {
+  background: var(--dv-bg);
+}
+.dv-sequence-message-input {
+  width: 100%;
+  height: 1.45rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--dv-diagram-accent);
+  border-radius: 0.25rem;
+  outline: none;
+  background: var(--dv-bg);
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: center;
 }
 .dv-sequence-stop {
   fill: var(--dv-diagram-accent);
@@ -1004,6 +1034,19 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
 }
 .dv-sequence-node--targetable .dv-sequence-node-label {
   cursor: crosshair;
+}
+.dv-sequence-node-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--dv-diagram-accent);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.15;
+  text-align: center;
 }
 .dv-mermaid-empty {
   padding: 1rem;

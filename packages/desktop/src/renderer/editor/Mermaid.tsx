@@ -1380,6 +1380,9 @@ function SequenceVisualEditor({
   const [colorParticipant, setColorParticipant] = useState<string | null>(null);
   const [selectedLifeline, setSelectedLifeline] = useState<string | null>(null);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [editingParticipant, setEditingParticipant] = useState<string | null>(null);
+  const [editingMessage, setEditingMessage] = useState<number | null>(null);
+  const [draft, setDraft] = useState('');
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   if (!model) return null;
@@ -1441,6 +1444,28 @@ function SequenceVisualEditor({
     setColorParticipant(null);
   };
 
+  const commitParticipantLabel = (participantId: string, label: string): void => {
+    const next = {
+      ...model,
+      participants: model.participants.map((participant) =>
+        participant.id === participantId ? { ...participant, label: cleanSequenceLabel(label) } : participant,
+      ),
+    };
+    setEditingParticipant(null);
+    onChange(serializeSequence(next));
+  };
+
+  const commitMessageLabel = (messageIndex: number, label: string): void => {
+    const next = {
+      ...model,
+      messages: model.messages.map((message, i) =>
+        i === messageIndex ? { ...message, label: escapeSequenceMessage(label) } : message,
+      ),
+    };
+    setEditingMessage(null);
+    onChange(serializeSequence(next));
+  };
+
   const scrollCanvas = (direction: -1 | 1): void => {
     canvasRef.current?.scrollBy({ left: direction * 260, behavior: 'smooth' });
   };
@@ -1479,6 +1504,8 @@ function SequenceVisualEditor({
     setSelectedLifeline(null);
     setColorParticipant(null);
     setConnectFrom(null);
+    setEditingParticipant(null);
+    setEditingMessage(null);
     setDrag(null);
     setLifelineDrag(null);
     onChange(serializeSequence(next));
@@ -1571,6 +1598,8 @@ function SequenceVisualEditor({
                     }
                     setColorParticipant(null);
                     setConnectFrom(null);
+                    setEditingParticipant(null);
+                    setEditingMessage(null);
                     setSelectedLifeline(participant.id);
                     canvasRef.current?.focus();
                   }}
@@ -1596,6 +1625,7 @@ function SequenceVisualEditor({
             const y = Math.max(from.y, to.y) + SEQUENCE_NODE_H + 68 + i * 62;
             const x1 = from.x + SEQUENCE_NODE_W / 2;
             const x2 = to.x + SEQUENCE_NODE_W / 2;
+            const labelX = (x1 + x2) / 2;
             const isReturn = message.arrow.includes('--') || message.arrow.includes('-.');
             const leftToRight = x2 >= x1;
             return (
@@ -1608,14 +1638,35 @@ function SequenceVisualEditor({
                   y2={y}
                   markerEnd="url(#dv-sequence-arrow)"
                 />
-                <text
-                  className="dv-sequence-message-label"
-                  x={(x1 + x2) / 2}
-                  y={y - 14}
-                  textAnchor="middle"
-                >
-                  {message.label}
-                </text>
+                <foreignObject x={labelX - 70} y={y - 34} width="140" height="28">
+                  {editingMessage === i ? (
+                    <input
+                      className="dv-sequence-message-input"
+                      value={draft}
+                      autoFocus
+                      onChange={(e) => setDraft(e.target.value)}
+                      onBlur={() => commitMessageLabel(i, draft)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitMessageLabel(i, draft);
+                        if (e.key === 'Escape') setEditingMessage(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="dv-sequence-message-label"
+                      title="Rename interaction"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDraft(message.label);
+                        setEditingParticipant(null);
+                        setEditingMessage(i);
+                      }}
+                    >
+                      {message.label}
+                    </button>
+                  )}
+                </foreignObject>
                 {message.arrow.includes('x') ? (
                   <text className="dv-sequence-stop" x={leftToRight ? x2 + 8 : x2 - 8} y={y + 4} textAnchor="middle">
                     x
@@ -1644,6 +1695,8 @@ function SequenceVisualEditor({
                 setLifelineDrag(null);
                 setSelectedLifeline(null);
                 setConnectFrom(null);
+                setEditingParticipant(null);
+                setEditingMessage(null);
                 setDrag({
                   participantId: participant.id,
                   startX: e.clientX,
@@ -1664,6 +1717,8 @@ function SequenceVisualEditor({
                 e.stopPropagation();
                 setSelectedLifeline(null);
                 setConnectFrom(null);
+                setEditingParticipant(null);
+                setEditingMessage(null);
                 setColorParticipant(colorParticipant === participant.id ? null : participant.id);
               }}
             >
@@ -1677,6 +1732,8 @@ function SequenceVisualEditor({
                 e.stopPropagation();
                 setSelectedLifeline(null);
                 setColorParticipant(null);
+                setEditingParticipant(null);
+                setEditingMessage(null);
                 setConnectFrom(connectFrom === participant.id ? null : participant.id);
                 canvasRef.current?.focus();
               }}
@@ -1697,24 +1754,44 @@ function SequenceVisualEditor({
                 ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              className="dv-sequence-node-label"
-              title={connectFrom && connectFrom !== participant.id ? 'Connect interaction here' : participant.label}
-              onClick={(e) => {
-                if (connectFrom && connectFrom !== participant.id) {
-                  e.stopPropagation();
-                  addInteraction(participant.id);
-                  return;
-                }
-                if (connectFrom === participant.id) {
-                  e.stopPropagation();
-                  setConnectFrom(null);
-                }
-              }}
-            >
-              {participant.label}
-            </button>
+            {editingParticipant === participant.id ? (
+              <input
+                className="dv-sequence-node-input"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => commitParticipantLabel(participant.id, draft)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitParticipantLabel(participant.id, draft);
+                  if (e.key === 'Escape') setEditingParticipant(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="dv-sequence-node-label"
+                title={connectFrom && connectFrom !== participant.id ? 'Connect interaction here' : 'Rename participant'}
+                onClick={(e) => {
+                  if (connectFrom && connectFrom !== participant.id) {
+                    e.stopPropagation();
+                    addInteraction(participant.id);
+                    return;
+                  }
+                  if (connectFrom === participant.id) {
+                    e.stopPropagation();
+                    setConnectFrom(null);
+                    return;
+                  }
+                  setDraft(participant.label);
+                  setColorParticipant(null);
+                  setSelectedLifeline(null);
+                  setEditingMessage(null);
+                  setEditingParticipant(participant.id);
+                }}
+              >
+                {participant.label}
+              </button>
+            )}
           </div>
         ))}
         {model.participants.map((participant) => (
@@ -1735,6 +1812,8 @@ function SequenceVisualEditor({
               setColorParticipant(null);
               setSelectedLifeline(participant.id);
               setConnectFrom(null);
+              setEditingParticipant(null);
+              setEditingMessage(null);
               canvasRef.current?.focus();
               setLifelineDrag({
                 participantId: participant.id,
