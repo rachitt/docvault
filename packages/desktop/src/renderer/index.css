@@ -552,9 +552,14 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-mindmap-editor {
   position: relative;
   overflow: auto;
+  max-height: 30rem;
   padding: 1rem;
   border-top: 1px solid var(--dv-border);
-  background: #ffffff;
+  background:
+    linear-gradient(var(--dv-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dv-border) 1px, transparent 1px),
+    var(--dv-bg);
+  background-size: 24px 24px;
 }
 .dv-mindmap-editor:focus {
   outline: none;
@@ -562,6 +567,35 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-mindmap-canvas {
   position: relative;
   min-width: 100%;
+}
+.dv-mindmap-scroll-controls {
+  position: sticky;
+  top: 0.5rem;
+  left: calc(100% - 7.25rem);
+  z-index: 4;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--dv-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dv-bg) 88%, white);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.1);
+}
+.dv-mindmap-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dv-text);
+  cursor: pointer;
+}
+.dv-mindmap-scroll-controls button:hover {
+  background: var(--dv-sidebar);
 }
 .dv-mindmap-edges {
   position: absolute;
@@ -582,7 +616,7 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 0.65rem;
   border: 2px solid #222222;
   border-radius: 999px;
   color: #1f2933;
@@ -592,18 +626,18 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   border-color: #0ea5d7;
   color: #ffffff;
   font-weight: 650;
-  font-size: 1.3rem;
+  font-size: 0.98rem;
 }
 .dv-mindmap-node--depth-1 {
   border-color: #087fb1;
   color: #ffffff;
-  font-size: 1rem;
+  font-size: 0.84rem;
 }
 .dv-mindmap-node--depth-2,
 .dv-mindmap-node--depth-3 {
   background: #ffffff;
   color: #1f2933;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
 }
 .dv-mindmap-drag-handle {
   position: absolute;

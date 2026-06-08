@@ -3,8 +3,10 @@ import { createReactBlockSpec } from '@blocknote/react';
 import DOMPurify from 'dompurify';
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Diamond,
   GripVertical,
   Link2,
@@ -207,9 +209,9 @@ function escapeMindmapLabel(label: string): string {
 }
 
 function mindmapNodeSize(node: Pick<MindmapNode, 'depth'>): number {
-  if (node.depth === 0) return 168;
-  if (node.depth === 1) return 110;
-  return 84;
+  if (node.depth === 0) return 118;
+  if (node.depth === 1) return 82;
+  return 62;
 }
 
 function defaultMindmapColor(depth: number): string {
@@ -231,12 +233,12 @@ function layoutMindmapNodes(nodes: MindmapNode[], positions: Map<string, { x: nu
   }
 
   const rootSize = mindmapNodeSize(root);
-  const centerX = 360;
-  const centerY = 250;
+  const centerX = 330;
+  const centerY = 230;
   const firstLevel = childrenByParent.get(root.id) ?? [];
   const firstCount = Math.max(1, firstLevel.length);
-  const firstRadiusX = 280;
-  const firstRadiusY = 185;
+  const firstRadiusX = 220;
+  const firstRadiusY = 145;
   const laidOut = nodes.map((node) => ({ ...node }));
   const byId = new Map(laidOut.map((node) => [node.id, node]));
 
@@ -269,8 +271,8 @@ function layoutMindmapNodes(nodes: MindmapNode[], positions: Map<string, { x: nu
       if (!current || positions.has(current.id)) return;
       const childSize = mindmapNodeSize(current);
       const childAngle = angleFromRoot - spread / 2 + (children.length === 1 ? spread / 2 : (childIndex / (children.length - 1)) * spread);
-      current.x = parentCenterX + Math.cos(childAngle) * 145 - childSize / 2;
-      current.y = parentCenterY + Math.sin(childAngle) * 125 - childSize / 2;
+      current.x = parentCenterX + Math.cos(childAngle) * 105 - childSize / 2;
+      current.y = parentCenterY + Math.sin(childAngle) * 92 - childSize / 2;
     });
   }
 
@@ -870,8 +872,11 @@ function MindmapVisualEditor({
   if (!model) return null;
 
   const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
-  const width = Math.max(820, ...model.nodes.map((node) => node.x + mindmapNodeSize(node) + 180));
-  const height = Math.max(560, ...model.nodes.map((node) => node.y + mindmapNodeSize(node) + 160));
+  const width = Math.max(720, ...model.nodes.map((node) => node.x + mindmapNodeSize(node) + 150));
+  const height = Math.max(480, ...model.nodes.map((node) => node.y + mindmapNodeSize(node) + 130));
+  const scrollCanvas = (dx: number, dy: number): void => {
+    canvasRef.current?.scrollBy({ left: dx, top: dy, behavior: 'smooth' });
+  };
 
   const commitLabel = (nodeId: string, label: string): void => {
     const next = {
@@ -918,6 +923,20 @@ function MindmapVisualEditor({
       onPointerUp={() => setDrag(null)}
       onPointerCancel={() => setDrag(null)}
     >
+      <div className="dv-mindmap-scroll-controls" aria-label="Scroll mindmap">
+        <button type="button" title="Scroll up" onClick={() => scrollCanvas(0, -220)}>
+          <ChevronUp size={15} />
+        </button>
+        <button type="button" title="Scroll left" onClick={() => scrollCanvas(-260, 0)}>
+          <ChevronLeft size={15} />
+        </button>
+        <button type="button" title="Scroll right" onClick={() => scrollCanvas(260, 0)}>
+          <ChevronRight size={15} />
+        </button>
+        <button type="button" title="Scroll down" onClick={() => scrollCanvas(0, 220)}>
+          <ChevronDown size={15} />
+        </button>
+      </div>
       <div className="dv-mindmap-canvas" style={{ width, height }}>
         <svg className="dv-mindmap-edges" width={width} height={height} aria-hidden="true">
           {model.nodes.map((node) => {
