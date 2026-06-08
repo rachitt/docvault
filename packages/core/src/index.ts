@@ -1,5 +1,21 @@
 export { DocVault } from './docvault.js';
-export type { CreateDiagramInput } from './docvault.js';
+export type { CreateDiagramInput, CreateDocFromTemplateInput } from './docvault.js';
+export {
+  TemplateStore,
+  extractVariables,
+  renderTemplate,
+  parseTemplate,
+  serializeTemplate,
+  STARTER_TEMPLATES,
+  BUILTIN_VARIABLES,
+} from './template.js';
+export type {
+  Template,
+  TemplateMeta,
+  TemplateRenderContext,
+  StarterTemplate,
+  BuiltinVariable,
+} from './template.js';
 export {
   validateMermaid,
   detectDiagramType,
