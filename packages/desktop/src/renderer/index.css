@@ -955,6 +955,12 @@ html:not(.dv-text-toolbar-active) [role='toolbar'] {
     0 0 0 3px color-mix(in srgb, var(--dv-diagram-accent) 24%, transparent),
     0 4px 14px rgba(16, 24, 40, 0.08);
 }
+.dv-sequence-node--target {
+  cursor: crosshair;
+}
+.dv-sequence-node--target .dv-sequence-node-label {
+  cursor: crosshair;
+}
 .dv-sequence-drag-handle {
   position: absolute;
   top: 0.2rem;

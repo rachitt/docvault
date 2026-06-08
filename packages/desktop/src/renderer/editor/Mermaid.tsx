@@ -1695,8 +1695,14 @@ function SequenceVisualEditor({
             key={participant.id}
             className={`dv-sequence-node${
               connectFrom === participant.id ? ' dv-sequence-node--connecting' : ''
-            }`}
+            }${connectFrom && connectFrom !== participant.id ? ' dv-sequence-node--target' : ''}`}
             style={{ left: participant.x, top: participant.y, width: SEQUENCE_NODE_W, minHeight: SEQUENCE_NODE_H, background: participant.color }}
+            onClick={(e) => {
+              if (connectFrom && connectFrom !== participant.id) {
+                e.stopPropagation();
+                addInteraction(participant.id);
+              }
+            }}
           >
             <button
               type="button"
@@ -1768,10 +1774,11 @@ function SequenceVisualEditor({
               <button
                 type="button"
                 className="dv-sequence-node-label"
-                title={connectFrom ? 'Select a vertical line to connect' : 'Rename participant'}
+                title={connectFrom ? 'Click to connect to this participant' : 'Rename participant'}
                 onClick={(e) => {
                   if (connectFrom) {
                     e.stopPropagation();
+                    if (connectFrom !== participant.id) addInteraction(participant.id);
                     return;
                   }
                   setDraft(participant.label);
