@@ -260,15 +260,12 @@ export const DIAGRAM_TEMPLATES: readonly DiagramTemplate[] = [
   {
     id: 'mindmap-concept',
     label: 'Mindmap (concept map)',
-    description: 'Hierarchical concept map radiating from a central idea.',
+    description: 'Simple concept map radiating from a central idea.',
     type: 'mindmap',
     source: `mindmap
   root((Central idea))
     Branch A
-      Detail A1
-      Detail A2
     Branch B
-      Detail B1
     Branch C`,
   },
   {

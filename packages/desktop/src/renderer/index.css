@@ -722,9 +722,12 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
 .dv-mindmap-colors {
   position: absolute;
   top: calc(100% + 0.45rem);
-  right: 0.25rem;
+  left: 0.25rem;
   z-index: 3;
   display: flex;
+  max-width: 13rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
   gap: 0.35rem;
   padding: 0.4rem;
   border: 1px solid var(--dv-border);
@@ -733,6 +736,7 @@ html:not(.dv-paragraph-toolbar-active) [role='toolbar'] {
   box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
 }
 .dv-mindmap-colors button {
+  flex: 0 0 auto;
   width: 1.25rem;
   height: 1.25rem;
   padding: 0;
