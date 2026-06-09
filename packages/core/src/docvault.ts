@@ -9,7 +9,7 @@ import {
   type DiagramTemplate,
 } from './diagram.js';
 import { chunkMarkdown } from './chunk.js';
-import { DocStore, assertSafeSegment, type CreateDocInput } from './doc.js';
+import { DocStore, assertSafeSegment, slugify, type CreateDocInput } from './doc.js';
 import { TransformersEmbedder, type Embedder } from './embed.js';
 import { importFile } from './import/index.js';
 import {
@@ -404,8 +404,10 @@ export class DocVault {
   }
 
   async createDoc(input: CreateDocInput): Promise<Doc> {
+    const product = assertSafeSegment(input.product, 'product');
+    const stem = assertSafeSegment(input.stem ?? slugify(input.title), 'stem');
+    this.markInternalWrite(`docs/${product}/${stem}.md`);
     const doc = await this.docs.create(input);
-    this.markInternalWrite(doc.relPath);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
     await this.versions.create({ relPath: doc.relPath, reason: 'create' });
@@ -417,8 +419,8 @@ export class DocVault {
     patch: Parameters<DocStore['update']>[1],
   ): Promise<Doc> {
     await this.versions.create({ relPath, reason: 'edit' }).catch(() => undefined);
+    this.markInternalWrite(relPath);
     const doc = await this.docs.update(relPath, patch);
-    this.markInternalWrite(doc.relPath);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
     return doc;
@@ -426,6 +428,10 @@ export class DocVault {
 
   async listVersions(idOrPath: string): Promise<DocVersion[]> {
     const doc = await this.readDoc(idOrPath);
+    await this.versions.prune(
+      doc.frontmatter.id,
+      (version) => version.reason === 'external' && version.actor === 'watcher' && !version.manual,
+    );
     return this.versions.list(doc.frontmatter.id);
   }
 
@@ -464,8 +470,8 @@ export class DocVault {
       absPath: this.vault.abs(targetRelPath),
       frontmatter: { ...snapshot.frontmatter, id: docId },
     };
+    this.markInternalWrite(targetRelPath);
     const saved = await this.docs.write(restored);
-    this.markInternalWrite(saved.relPath);
     this.index.upsert(saved);
     this.enqueueEmbed(saved.frontmatter.id, saved.content);
     return saved;
@@ -587,8 +593,8 @@ export class DocVault {
     const links = new Set(doc.frontmatter.links ?? []);
     links.add(targetId);
     doc.frontmatter.links = [...links];
+    this.markInternalWrite(fromPath);
     const saved = await this.docs.write(doc);
-    this.markInternalWrite(saved.relPath);
     this.index.upsert(saved);
     this.enqueueEmbed(saved.frontmatter.id, saved.content);
     return saved;
@@ -763,13 +769,11 @@ export class DocVault {
         if (id) {
           this.docs
             .read(c.relPath)
-            .then(async (doc) => {
+            .then((doc) => {
               this.enqueueEmbed(id, doc.content);
-              if (!this.isInternalWrite(c.relPath)) {
-                await this.versions
-                  .create({ relPath: c.relPath, reason: 'external', actor: 'watcher' })
-                  .catch(() => undefined);
-              }
+              // History is created by structured app actions and manual saves.
+              // Watcher events still refresh embeddings, but do not add entries.
+              this.isInternalWrite(c.relPath);
             })
             .catch(() => undefined);
         }

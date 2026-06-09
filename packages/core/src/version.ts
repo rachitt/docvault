@@ -116,6 +116,25 @@ export class VersionStore {
     );
   }
 
+  async prune(
+    docId: string,
+    shouldRemove: (version: DocVersion) => boolean,
+  ): Promise<number> {
+    const versions = await this.list(docId);
+    const keep: DocVersion[] = [];
+    const remove: DocVersion[] = [];
+    for (const version of versions) {
+      if (shouldRemove(version)) remove.push(version);
+      else keep.push(version);
+    }
+    if (remove.length === 0) return 0;
+    await Promise.all(
+      remove.map((version) => rm(this.versionPath(docId, version.id), { force: true })),
+    );
+    await this.writeManifest(docId, keep);
+    return remove.length;
+  }
+
   private async writeManifest(docId: string, versions: DocVersion[]): Promise<void> {
     await mkdir(this.docDir(docId), { recursive: true });
     const manifest = this.manifestPath(docId);
