@@ -14,6 +14,7 @@ import type {
   EmbeddingStatus,
   ExportFormat,
   ExportProgress,
+  type DocVaultApi,
   SearchMode,
   UnifiedHit,
 } from '../shared/ipc';
@@ -130,6 +131,18 @@ interface State {
 
 const api = () => window.docvault;
 
+const VERSION_PRELOAD_ERROR =
+  'Document history needs the updated preload bridge. Restart the desktop app to load the new version APIs.';
+
+function versionMethod<K extends 'listVersions' | 'readVersion' | 'saveVersion' | 'restoreVersion'>(
+  name: K,
+): DocVaultApi[K] {
+  const dv = api();
+  const fn = dv[name];
+  if (typeof fn !== 'function') throw new Error(VERSION_PRELOAD_ERROR);
+  return fn.bind(dv) as DocVaultApi[K];
+}
+
 function slugify(title: string): string {
   return (
     title
@@ -192,18 +205,18 @@ export const useStore = create<State>((set, get) => ({
     set({ docs: await api().listDocs() });
   },
 
-  listVersions: (idOrPath) => api().listVersions(idOrPath),
+  listVersions: (idOrPath) => versionMethod('listVersions')(idOrPath),
 
-  readVersion: (docId, versionId) => api().readVersion(docId, versionId),
+  readVersion: (docId, versionId) => versionMethod('readVersion')(docId, versionId),
 
   saveVersion: async (idOrPath) => {
     const target = idOrPath ?? get().currentDoc?.frontmatter.id;
     if (!target) return null;
-    return api().saveVersion(target);
+    return versionMethod('saveVersion')(target);
   },
 
   restoreVersion: async (docId, versionId) => {
-    const restored = await api().restoreVersion(docId, versionId);
+    const restored = await versionMethod('restoreVersion')(docId, versionId);
     set({ currentDoc: restored, docs: await api().listDocs(), view: 'doc' });
   },
 
