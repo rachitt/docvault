@@ -67,12 +67,11 @@ export function VersionHistory(): React.JSX.Element {
     }
   };
 
-  const restoreSnapshot = async (): Promise<void> => {
-    if (!selected) return;
+  const restoreSnapshot = async (version: DocVersion): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      await restoreVersion(selected.docId, selected.id);
+      await restoreVersion(version.docId, version.id);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -130,68 +129,79 @@ export function VersionHistory(): React.JSX.Element {
           {error}
         </p>
       )}
-      <div className="border-b border-[var(--dv-border)]">
+      <div className="min-h-0 flex-1 overflow-y-auto border-b border-[var(--dv-border)]">
         {versions.length === 0 ? (
           <p className="dv-version-muted px-3 py-4 text-sm text-neutral-400">No saved versions yet.</p>
         ) : (
-          versions.map((version) => (
-            <div
-              key={version.id}
-              className={`dv-version-row flex w-full items-center gap-2 border-b border-[var(--dv-border)] px-3 py-2 text-left last:border-b-0 ${
-                selected?.id === version.id
-                  ? 'bg-neutral-200/50 dark:bg-neutral-800'
-                  : 'hover:bg-neutral-200/30 dark:hover:bg-neutral-800/60'
-              }`}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="dv-version-title block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
-                  {formatTime(version.createdAt)}
-                </span>
-                <span className="dv-version-muted mt-0.5 block truncate text-[11px] text-neutral-500">
-                  {reasonLabel(version)} / {version.actor}
-                </span>
-              </span>
-              <button
-                onClick={() => void previewSnapshot(version)}
-                disabled={previewingId === version.id}
-                title="Preview version"
-                aria-label="Preview version"
-                className="dv-version-icon shrink-0 rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+          versions.map((version) => {
+            const isSelected = selected?.id === version.id;
+            const isPreviewing = previewingId === version.id;
+            const showPreview = isSelected && preview;
+            return (
+              <div
+                key={version.id}
+                className={`dv-version-row border-b border-[var(--dv-border)] last:border-b-0 ${
+                  isSelected ? 'bg-neutral-200/50 dark:bg-neutral-800' : ''
+                }`}
               >
-                <Eye size={14} />
-              </button>
-            </div>
-          ))
+                <div
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+                    isSelected ? '' : 'hover:bg-neutral-200/30 dark:hover:bg-neutral-800/60'
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="dv-version-title block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
+                      {formatTime(version.createdAt)}
+                    </span>
+                    <span className="dv-version-muted mt-0.5 block truncate text-[11px] text-neutral-500">
+                      {reasonLabel(version)} / {version.actor}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => void previewSnapshot(version)}
+                    disabled={isPreviewing}
+                    title="Preview version"
+                    aria-label="Preview version"
+                    className="dv-version-icon shrink-0 rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+                  >
+                    <Eye size={14} />
+                  </button>
+                </div>
+                {isSelected && (
+                  <div className="border-t border-[var(--dv-border)]">
+                    <div className="flex items-center gap-1.5 px-3 py-2">
+                      <button
+                        onClick={() => void restoreSnapshot(version)}
+                        disabled={busy}
+                        className="dv-version-action inline-flex items-center gap-1.5 rounded-md border border-[var(--dv-border)] px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                      >
+                        <RotateCcw size={13} />
+                        Restore
+                      </button>
+                      <button
+                        onClick={() => void copySnapshot()}
+                        disabled={!showPreview}
+                        title="Copy snapshot text"
+                        className="dv-version-icon rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+                      >
+                        <Clipboard size={14} />
+                      </button>
+                    </div>
+                    {showPreview ? (
+                      <pre className="dv-version-preview whitespace-pre-wrap break-words px-3 py-3 text-xs leading-5 text-neutral-700 dark:text-neutral-200">
+                        {preview.content}
+                      </pre>
+                    ) : isPreviewing ? (
+                      <p className="dv-version-muted px-3 py-3 text-sm text-neutral-400">
+                        Loading version...
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {selected && (
-          <div className="flex items-center gap-1.5 border-b border-[var(--dv-border)] px-3 py-2">
-            <button
-              onClick={() => void restoreSnapshot()}
-              disabled={busy}
-              className="dv-version-action inline-flex items-center gap-1.5 rounded-md border border-[var(--dv-border)] px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
-            >
-              <RotateCcw size={13} />
-              Restore
-            </button>
-            <button
-              onClick={() => void copySnapshot()}
-              disabled={!preview}
-              title="Copy snapshot text"
-              className="dv-version-icon rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
-            >
-              <Clipboard size={14} />
-            </button>
-          </div>
-        )}
-        {preview ? (
-          <pre className="dv-version-preview whitespace-pre-wrap break-words px-3 py-3 text-xs leading-5 text-neutral-700 dark:text-neutral-200">
-            {preview.content}
-          </pre>
-        ) : previewingId ? (
-          <p className="dv-version-muted p-4 text-sm text-neutral-400">Loading version...</p>
-        ) : null}
       </div>
     </div>
   );
