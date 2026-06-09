@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Clipboard, History, RotateCcw, Save } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Clipboard, Eye, History, RotateCcw, Save } from 'lucide-react';
 import type { Doc, DocVersion } from '@docvault/core';
 import { useStore } from '../store';
 
@@ -28,11 +28,13 @@ export function VersionHistory(): React.JSX.Element {
   const [versions, setVersions] = useState<DocVersion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Doc | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const previewRequest = useRef(0);
 
   const selected = useMemo(
-    () => versions.find((v) => v.id === selectedId) ?? versions[0] ?? null,
+    () => versions.find((v) => v.id === selectedId) ?? null,
     [selectedId, versions],
   );
 
@@ -40,7 +42,8 @@ export function VersionHistory(): React.JSX.Element {
     if (!currentDoc) return;
     const next = await listVersions(currentDoc.frontmatter.id);
     setVersions(next);
-    setSelectedId((id) => (id && next.some((v) => v.id === id) ? id : next[0]?.id ?? null));
+    setSelectedId((id) => (id && next.some((v) => v.id === id) ? id : null));
+    setPreview((doc) => (doc && next.some((v) => v.id === selectedId) ? doc : null));
   };
 
   useEffect(() => {
@@ -49,24 +52,6 @@ export function VersionHistory(): React.JSX.Element {
     void reload().catch((e) => setError(e instanceof Error ? e.message : String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the open doc changes
   }, [currentDoc?.frontmatter.id, currentDoc?.frontmatter.updated]);
-
-  useEffect(() => {
-    if (!selected) {
-      setPreview(null);
-      return;
-    }
-    let cancelled = false;
-    void readVersion(selected.docId, selected.id)
-      .then((doc) => {
-        if (!cancelled) setPreview(doc);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [readVersion, selected]);
 
   const saveSnapshot = async (): Promise<void> => {
     if (!currentDoc) return;
@@ -93,6 +78,25 @@ export function VersionHistory(): React.JSX.Element {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const previewSnapshot = async (version: DocVersion): Promise<void> => {
+    const requestId = previewRequest.current + 1;
+    previewRequest.current = requestId;
+    setSelectedId(version.id);
+    setPreview(null);
+    setPreviewingId(version.id);
+    setError(null);
+    try {
+      const doc = await readVersion(version.docId, version.id);
+      if (previewRequest.current === requestId) setPreview(doc);
+    } catch (e) {
+      if (previewRequest.current === requestId) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      if (previewRequest.current === requestId) setPreviewingId(null);
     }
   };
 
@@ -131,22 +135,32 @@ export function VersionHistory(): React.JSX.Element {
           <p className="dv-version-muted px-3 py-4 text-sm text-neutral-400">No saved versions yet.</p>
         ) : (
           versions.map((version) => (
-            <button
+            <div
               key={version.id}
-              onClick={() => setSelectedId(version.id)}
-              className={`dv-version-row block w-full border-b border-[var(--dv-border)] px-3 py-2 text-left last:border-b-0 ${
+              className={`dv-version-row flex w-full items-center gap-2 border-b border-[var(--dv-border)] px-3 py-2 text-left last:border-b-0 ${
                 selected?.id === version.id
                   ? 'bg-neutral-200/50 dark:bg-neutral-800'
                   : 'hover:bg-neutral-200/30 dark:hover:bg-neutral-800/60'
               }`}
             >
-              <span className="dv-version-title block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
-                {formatTime(version.createdAt)}
+              <span className="min-w-0 flex-1">
+                <span className="dv-version-title block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
+                  {formatTime(version.createdAt)}
+                </span>
+                <span className="dv-version-muted mt-0.5 block truncate text-[11px] text-neutral-500">
+                  {reasonLabel(version)} / {version.actor}
+                </span>
               </span>
-              <span className="dv-version-muted mt-0.5 block truncate text-[11px] text-neutral-500">
-                {reasonLabel(version)} / {version.actor}
-              </span>
-            </button>
+              <button
+                onClick={() => void previewSnapshot(version)}
+                disabled={previewingId === version.id}
+                title="Preview version"
+                aria-label="Preview version"
+                className="dv-version-icon shrink-0 rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+              >
+                <Eye size={14} />
+              </button>
+            </div>
           ))
         )}
       </div>
@@ -175,7 +189,7 @@ export function VersionHistory(): React.JSX.Element {
           <pre className="dv-version-preview whitespace-pre-wrap break-words px-3 py-3 text-xs leading-5 text-neutral-700 dark:text-neutral-200">
             {preview.content}
           </pre>
-        ) : selected ? (
+        ) : previewingId ? (
           <p className="dv-version-muted p-4 text-sm text-neutral-400">Loading version...</p>
         ) : null}
       </div>
