@@ -142,7 +142,7 @@ export function VersionHistory(): React.JSX.Element {
                 key={version.id}
                 className={`dv-version-row border-b border-[var(--dv-border)] last:border-b-0 ${
                   isSelected ? 'bg-neutral-200/50 dark:bg-neutral-800' : ''
-                }`}
+                } ${isSelected ? 'dv-version-row--selected' : ''}`}
               >
                 <div
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
@@ -168,7 +168,7 @@ export function VersionHistory(): React.JSX.Element {
                   </button>
                 </div>
                 {isSelected && (
-                  <div className="border-t border-[var(--dv-border)]">
+                  <div className="dv-version-expanded border-t border-[var(--dv-border)]">
                     <div className="flex items-center gap-1.5 px-3 py-2">
                       <button
                         onClick={() => void restoreSnapshot(version)}
