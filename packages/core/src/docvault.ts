@@ -98,6 +98,7 @@ export class DocVault {
   readonly templates: TemplateStore;
   readonly versions: VersionStore;
   private watcher: VaultWatcher | null = null;
+  private internalWrites = new Map<string, number>();
 
   /**
    * Serializes background embedding work so re-chunking never overlaps for the
@@ -197,6 +198,20 @@ export class DocVault {
         if (this.embedQueue.get(docId) === next) this.embedQueue.delete(docId);
       });
     this.embedQueue.set(docId, next);
+  }
+
+  private markInternalWrite(relPath: string): void {
+    this.internalWrites.set(relPath, Date.now() + 3000);
+  }
+
+  private isInternalWrite(relPath: string): boolean {
+    const until = this.internalWrites.get(relPath);
+    if (until === undefined) return false;
+    if (until < Date.now()) {
+      this.internalWrites.delete(relPath);
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -390,6 +405,7 @@ export class DocVault {
 
   async createDoc(input: CreateDocInput): Promise<Doc> {
     const doc = await this.docs.create(input);
+    this.markInternalWrite(doc.relPath);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
     await this.versions.create({ relPath: doc.relPath, reason: 'create' });
@@ -402,6 +418,7 @@ export class DocVault {
   ): Promise<Doc> {
     await this.versions.create({ relPath, reason: 'edit' }).catch(() => undefined);
     const doc = await this.docs.update(relPath, patch);
+    this.markInternalWrite(doc.relPath);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
     return doc;
@@ -448,6 +465,7 @@ export class DocVault {
       frontmatter: { ...snapshot.frontmatter, id: docId },
     };
     const saved = await this.docs.write(restored);
+    this.markInternalWrite(saved.relPath);
     this.index.upsert(saved);
     this.enqueueEmbed(saved.frontmatter.id, saved.content);
     return saved;
@@ -570,6 +588,7 @@ export class DocVault {
     links.add(targetId);
     doc.frontmatter.links = [...links];
     const saved = await this.docs.write(doc);
+    this.markInternalWrite(saved.relPath);
     this.index.upsert(saved);
     this.enqueueEmbed(saved.frontmatter.id, saved.content);
     return saved;
@@ -577,6 +596,7 @@ export class DocVault {
 
   async importFile(srcAbsPath: string, opts: { tags?: string[] } = {}): Promise<Doc> {
     const result = await importFile(this.vault, srcAbsPath, opts);
+    this.markInternalWrite(result.doc.relPath);
     this.index.upsert(result.doc);
     this.enqueueEmbed(result.doc.frontmatter.id, result.doc.content);
     await this.versions.create({ relPath: result.doc.relPath, reason: 'import' });
@@ -745,9 +765,11 @@ export class DocVault {
             .read(c.relPath)
             .then(async (doc) => {
               this.enqueueEmbed(id, doc.content);
-              await this.versions
-                .create({ relPath: c.relPath, reason: 'external', actor: 'watcher' })
-                .catch(() => undefined);
+              if (!this.isInternalWrite(c.relPath)) {
+                await this.versions
+                  .create({ relPath: c.relPath, reason: 'external', actor: 'watcher' })
+                  .catch(() => undefined);
+              }
             })
             .catch(() => undefined);
         }

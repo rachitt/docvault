@@ -106,17 +106,17 @@ export function VersionHistory(): React.JSX.Element {
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="dv-version-history flex min-h-full flex-col">
       <div className="flex items-center gap-2 border-b border-[var(--dv-border)] px-3 py-2">
-        <History size={15} className="text-neutral-400" />
-        <span className="min-w-0 flex-1 text-xs font-medium text-neutral-700 dark:text-neutral-200">
+        <History size={15} className="dv-version-muted text-neutral-400" />
+        <span className="dv-version-title min-w-0 flex-1 text-xs font-medium text-neutral-700 dark:text-neutral-200">
           {versions.length} version{versions.length === 1 ? '' : 's'}
         </span>
         <button
           onClick={() => void saveSnapshot()}
           disabled={busy}
           title="Save current version"
-          className="rounded p-1 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+          className="dv-version-icon rounded p-1 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
         >
           <Save size={14} />
         </button>
@@ -128,22 +128,22 @@ export function VersionHistory(): React.JSX.Element {
       )}
       <div className="border-b border-[var(--dv-border)]">
         {versions.length === 0 ? (
-          <p className="px-3 py-4 text-sm text-neutral-400">No saved versions yet.</p>
+          <p className="dv-version-muted px-3 py-4 text-sm text-neutral-400">No saved versions yet.</p>
         ) : (
           versions.map((version) => (
             <button
               key={version.id}
               onClick={() => setSelectedId(version.id)}
-              className={`block w-full border-b border-[var(--dv-border)] px-3 py-2 text-left last:border-b-0 ${
+              className={`dv-version-row block w-full border-b border-[var(--dv-border)] px-3 py-2 text-left last:border-b-0 ${
                 selected?.id === version.id
                   ? 'bg-neutral-200/50 dark:bg-neutral-800'
                   : 'hover:bg-neutral-200/30 dark:hover:bg-neutral-800/60'
               }`}
             >
-              <span className="block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
+              <span className="dv-version-title block truncate text-xs font-medium text-neutral-800 dark:text-neutral-100">
                 {formatTime(version.createdAt)}
               </span>
-              <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
+              <span className="dv-version-muted mt-0.5 block truncate text-[11px] text-neutral-500">
                 {reasonLabel(version)} / {version.actor}
               </span>
             </button>
@@ -156,7 +156,7 @@ export function VersionHistory(): React.JSX.Element {
             <button
               onClick={() => void restoreSnapshot()}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--dv-border)] px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              className="dv-version-action inline-flex items-center gap-1.5 rounded-md border border-[var(--dv-border)] px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
             >
               <RotateCcw size={13} />
               Restore
@@ -165,18 +165,18 @@ export function VersionHistory(): React.JSX.Element {
               onClick={() => void copySnapshot()}
               disabled={!preview}
               title="Copy snapshot text"
-              className="rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+              className="dv-version-icon rounded p-1.5 text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
             >
               <Clipboard size={14} />
             </button>
           </div>
         )}
         {preview ? (
-          <pre className="whitespace-pre-wrap break-words px-3 py-3 text-xs leading-5 text-neutral-700 dark:text-neutral-200">
+          <pre className="dv-version-preview whitespace-pre-wrap break-words px-3 py-3 text-xs leading-5 text-neutral-700 dark:text-neutral-200">
             {preview.content}
           </pre>
         ) : selected ? (
-          <p className="p-4 text-sm text-neutral-400">Loading version...</p>
+          <p className="dv-version-muted p-4 text-sm text-neutral-400">Loading version...</p>
         ) : null}
       </div>
     </div>

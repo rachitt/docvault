@@ -28,6 +28,7 @@ export function RightPanel(): React.JSX.Element {
           <button
             key={tab}
             onClick={() => setRightTab(tab)}
+            data-active={rightTab === tab}
             className={`flex-1 px-1.5 py-2.5 text-xs whitespace-nowrap ${
               rightTab === tab
                 ? 'border-b-2 border-[var(--dv-accent)] font-medium text-neutral-900 dark:text-neutral-100'
