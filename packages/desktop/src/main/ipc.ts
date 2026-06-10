@@ -213,6 +213,11 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
       if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged, paths);
     }, 350);
   });
+  // Without an 'error' listener a watcher error (e.g. EMFILE) would throw on
+  // the EventEmitter and crash the main process; log it and keep running.
+  watcher.on('error', (err) => {
+    console.error('[docvault] vault watcher error:', err);
+  });
 
   return () => {
     void watcher.close();

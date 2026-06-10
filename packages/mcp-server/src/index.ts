@@ -68,7 +68,9 @@ const relPath = nonEmpty
 async function main(): Promise<void> {
   const vaultDir = resolveVaultDir();
   const dv = await DocVault.open(vaultDir);
-  dv.startWatching();
+  // stderr only: stdout is the MCP protocol channel. A watcher error must not
+  // kill the sidecar; log it and keep serving.
+  dv.startWatching(undefined, (err) => console.error('[docvault-mcp] watcher error:', err));
   console.error(`[docvault-mcp] vault ready at ${vaultDir}`);
 
   const server = new McpServer({ name: 'docvault', version: '0.1.0' });

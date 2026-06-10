@@ -673,7 +673,7 @@ export class DocVault {
 
   // --- Watching ----------------------------------------------------------
 
-  startWatching(onChange?: (c: VaultChange) => void): void {
+  startWatching(onChange?: (c: VaultChange) => void, onError?: (err: Error) => void): void {
     if (this.watcher) return;
     // Re-embed on watcher upserts (external edits / re-extracted imports). The
     // watcher has already updated FTS via index.upsert; we read back the doc id
@@ -690,7 +690,7 @@ export class DocVault {
       }
       onChange?.(c);
     };
-    this.watcher = new VaultWatcher(this.vault, this.index, handle);
+    this.watcher = new VaultWatcher(this.vault, this.index, handle, onError);
     this.watcher.start();
   }
 

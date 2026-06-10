@@ -21,6 +21,7 @@ export class VaultWatcher {
     private readonly vault: Vault,
     private readonly indexer: Indexer,
     private readonly onChange?: (change: VaultChange) => void,
+    private readonly onError?: (err: Error) => void,
   ) {}
 
   start(): void {
@@ -50,6 +51,14 @@ export class VaultWatcher {
           this.indexer.removeByPath(relPath);
           this.onChange?.({ type: 'remove', relPath });
         });
+      })
+      // An 'error' event on an EventEmitter with no listener throws and kills
+      // the process — a transient fs error (e.g. EMFILE) must not take the
+      // sidecar down. Log it and surface it to the host via onError.
+      .on('error', (err) => {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error('[docvault] watcher error:', error);
+        this.onError?.(error);
       });
   }
 

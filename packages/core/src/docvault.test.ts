@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -289,6 +290,21 @@ describe('DocVault core', () => {
     const reread = await dv.readDoc(imported.frontmatter.id);
     expect(reread.content).toContain('zebra');
   }, 20000);
+
+  it('surfaces watcher errors via onError instead of crashing (watcher)', async () => {
+    const errors: Error[] = [];
+    dv.startWatching(undefined, (err) => errors.push(err));
+    // Synthesize an emitter-level fs error (e.g. file-descriptor exhaustion).
+    // Without an 'error' listener this would throw from the EventEmitter and
+    // kill the process; with the handler it is logged and surfaced instead.
+    const fsWatcher = (dv as unknown as { watcher: { watcher: EventEmitter } }).watcher.watcher;
+    fsWatcher.emit('error', new Error('EMFILE: too many open files'));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain('EMFILE');
+    // The vault keeps working after the error.
+    await dv.createDoc({ product: 'p', title: 'Still alive', content: 'post-error giraffe' });
+    expect(dv.search({ query: 'giraffe' })).toHaveLength(1);
+  });
 });
 
 /** Poll until `cond` is true or the timeout elapses. */
