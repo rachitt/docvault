@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { dialog, ipcMain, shell, type BrowserWindow } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import chokidar from 'chokidar';
@@ -32,8 +32,36 @@ function resolveMcpServer(): string {
  * MCP server that Claude Code / Codex use, so there is a single source of truth
  * and no native-ABI rebuild. Config (starred/recent/etc.) is plain JSON handled
  * here directly; external file edits are surfaced via a lightweight watcher.
+ *
+ * Registered exactly ONCE per app lifetime (ipcMain.handle throws on duplicate
+ * channels, and we must not spawn a second sidecar), so it takes no
+ * BrowserWindow: on macOS windows come and go across dock re-activations, and
+ * a captured window would go stale. Anything window-bound (dialogs, events)
+ * resolves the focused/first live window at call time instead.
  */
-export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise<() => void> {
+export async function registerIpc(vaultDir: string): Promise<() => void> {
+  /** The window to parent dialogs to right now, if any. */
+  const targetWindow = (): BrowserWindow | undefined =>
+    BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+
+  const openDialog = (
+    opts: Electron.OpenDialogOptions,
+  ): Promise<Electron.OpenDialogReturnValue> => {
+    const w = targetWindow();
+    return w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts);
+  };
+  const saveDialog = (
+    opts: Electron.SaveDialogOptions,
+  ): Promise<Electron.SaveDialogReturnValue> => {
+    const w = targetWindow();
+    return w ? dialog.showSaveDialog(w, opts) : dialog.showSaveDialog(opts);
+  };
+  /** Send an event to every live window (renderers re-mount across windows). */
+  const broadcast = (channel: string, payload: unknown): void => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(channel, payload);
+    }
+  };
   // The MCP server loads a native SQLite module compiled for the system Node
   // ABI, so it must run under a real `node` — never under Electron's runtime
   // (whose ABI differs). `process.execPath` is only a usable node when we are
@@ -112,7 +140,7 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
 
   // --- Local OS actions ---
   h(CH.importFile, async () => {
-    const res = await dialog.showOpenDialog(win, {
+    const res = await openDialog({
       title: 'Import a document',
       filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'txt'] }],
       properties: ['openFile'],
@@ -123,7 +151,7 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   // --- Export (HTML / PDF / DOCX) ---
   h(CH.exportDoc, async (idOrPath: string, format: ExportFormat) => {
     const doc = await call<Doc>('read_doc', { id_or_path: idOrPath });
-    const res = await dialog.showSaveDialog(win, {
+    const res = await saveDialog({
       title: 'Export document',
       defaultPath: `${fileSlug(doc.frontmatter.title)}.${EXPORT_EXT[format]}`,
       filters: [{ name: format.toUpperCase(), extensions: [EXPORT_EXT[format]] }],
@@ -141,12 +169,10 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
       for (const m of metas) docs.push(await call<Doc>('read_doc', { id_or_path: m.id }));
       if (docs.length === 0) return { canceled: true as const };
       const label = opts.product ?? 'vault';
-      const onProgress = (p: unknown): void => {
-        if (!win.isDestroyed()) win.webContents.send(EV.exportProgress, p);
-      };
+      const onProgress = (p: unknown): void => broadcast(EV.exportProgress, p);
 
       if (opts.combined && opts.format === 'pdf') {
-        const res = await dialog.showSaveDialog(win, {
+        const res = await saveDialog({
           title: 'Export combined PDF',
           defaultPath: `${fileSlug(label)}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -157,7 +183,7 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
         return { canceled: false as const, path: res.filePath, count: docs.length };
       }
 
-      const res = await dialog.showOpenDialog(win, {
+      const res = await openDialog({
         title: 'Choose a folder to export into',
         properties: ['openDirectory', 'createDirectory'],
       });
@@ -210,7 +236,7 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     debounce = setTimeout(() => {
       const paths = [...changed];
       changed.clear();
-      if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged, paths);
+      broadcast(EV.vaultChanged, paths);
     }, 350);
   });
 

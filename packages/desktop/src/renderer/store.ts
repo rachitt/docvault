@@ -74,7 +74,14 @@ interface State {
   openDoc: (idOrPath: string) => Promise<void>;
   /** Replace the open doc in place (e.g. after reloading it from disk). */
   setCurrentDoc: (doc: Doc) => void;
-  saveCurrent: (content: string) => Promise<void>;
+  /**
+   * Save `content` to the doc at `relPath` (defaults to the open doc). Passing
+   * an explicit relPath lets a flushed save from an unmounting editor target
+   * the doc it was editing even after the user navigated elsewhere. Resolves
+   * with the saved doc, or null when there was nothing to save. Rejections
+   * propagate so callers can keep their dirty state.
+   */
+  saveCurrent: (content: string, relPath?: string) => Promise<Doc | null>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
   /** Load the vault's document templates into state. */
@@ -179,12 +186,15 @@ export const useStore = create<State>((set, get) => ({
 
   setCurrentDoc: (doc) => set({ currentDoc: doc }),
 
-  saveCurrent: async (content) => {
-    const cur = get().currentDoc;
-    if (!cur) return;
-    const saved = await api().updateDoc(cur.relPath, { content });
-    set({ currentDoc: saved });
+  saveCurrent: async (content, relPath) => {
+    const target = relPath ?? get().currentDoc?.relPath;
+    if (!target) return null;
+    const saved = await api().updateDoc(target, { content });
+    // Only replace the open doc if it is still the one we saved — a save that
+    // resolves after the user opened another doc must not snap the view back.
+    if (get().currentDoc?.relPath === saved.relPath) set({ currentDoc: saved });
     set({ docs: await api().listDocs() });
+    return saved;
   },
 
   newDoc: async (product, title) => {
