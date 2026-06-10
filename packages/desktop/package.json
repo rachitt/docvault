@@ -15,6 +15,7 @@
     "package:dmg": "electron-vite build && electron-builder --mac dmg",
     "dev-cert": "bash scripts/dev-cert.sh",
     "test:export-smoke": "node scripts/export-smoke.run.mjs",
+    "test:config-smoke": "node scripts/config-store-smoke.run.mjs",
     "reinstall": "bash scripts/reinstall.sh",
     "release": "electron-vite build && electron-builder --mac dmg --publish always"
   },

@@ -30,8 +30,9 @@ function resolveMcpServer(): string {
  * Wires the renderer to a DocVault MCP server running as a system-node sidecar.
  * Electron itself never loads the native SQLite module — it speaks to the same
  * MCP server that Claude Code / Codex use, so there is a single source of truth
- * and no native-ABI rebuild. Config (starred/recent/etc.) is plain JSON handled
- * here directly; external file edits are surfaced via a lightweight watcher.
+ * and no native-ABI rebuild. Config reads are plain JSON handled here directly;
+ * config mutations also go through the sidecar (single serialized writer);
+ * external file edits are surfaced via a lightweight watcher.
  */
 export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise<() => void> {
   // The MCP server loads a native SQLite module compiled for the system Node
@@ -104,11 +105,15 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
     call('save_as_template', { id_or_path: idOrPath, name }),
   );
 
-  // --- Config (plain JSON, no native dep) ---
+  // --- Config ---
+  // Reads stay local (plain JSON, race-safe, works before the sidecar is up),
+  // but mutations go through the MCP sidecar: core serializes config writes
+  // in-process, so routing every writer through it stops a stale desktop
+  // read-modify-write from clobbering sidecar updates (e.g. new trash entries).
   h(CH.getConfig, () => config.read());
-  h(CH.updateConfig, (patch: Record<string, unknown>) => config.update(patch));
-  h(CH.toggleStar, (id: string) => config.toggleStar(id));
-  h(CH.pushRecent, (id: string) => config.pushRecent(id));
+  h(CH.updateConfig, (patch: Record<string, unknown>) => call('update_config', patch));
+  h(CH.toggleStar, (id: string) => call('toggle_star', { id }));
+  h(CH.pushRecent, (id: string) => call('push_recent', { id }));
 
   // --- Local OS actions ---
   h(CH.importFile, async () => {
@@ -212,6 +217,11 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
       changed.clear();
       if (!win.isDestroyed()) win.webContents.send(EV.vaultChanged, paths);
     }, 350);
+  });
+  // Without an 'error' listener a watcher error (e.g. EMFILE) would throw on
+  // the EventEmitter and crash the main process; log it and keep running.
+  watcher.on('error', (err) => {
+    console.error('[docvault] vault watcher error:', err);
   });
 
   return () => {

@@ -107,6 +107,46 @@ export class Vault {
     return path.relative(this.root, path.resolve(absPath)).split(path.sep).join('/');
   }
 
+  /**
+   * Containment + subtree gate for caller-supplied doc paths (MCP tools, the
+   * desktop IPC). Runs the {@link abs} vault-escape checks first, then requires
+   * the path to live strictly inside docs/ (or assets/ when `allowAssets`), so a
+   * relPath like `.docvault/config.json` or `templates/x.md` can never reach an
+   * operation meant for managed docs. With `mdOnly`, additionally rejects
+   * non-markdown files (e.g. an imported original or product.json). Returns the
+   * resolved absolute path, like {@link abs}.
+   */
+  assertDocPath(
+    relPath: string,
+    opts: { allowAssets?: boolean; mdOnly?: boolean } = {},
+  ): string {
+    const resolved = this.abs(relPath);
+    const rel = this.rel(resolved);
+    const inDocs = rel.startsWith('docs/');
+    const inAssets = opts.allowAssets === true && rel.startsWith('assets/');
+    if (!inDocs && !inAssets) {
+      const scope = opts.allowAssets ? 'docs/ or assets/' : 'docs/';
+      throw new Error(`Path outside ${scope}: ${relPath}`);
+    }
+    if (opts.mdOnly && !rel.toLowerCase().endsWith('.md')) {
+      throw new Error(`Not a markdown doc: ${relPath}`);
+    }
+    return resolved;
+  }
+
+  /**
+   * Gate for caller-supplied trash paths: must resolve strictly inside
+   * .docvault/trash/, where DocStore.trash places soft-deleted items.
+   */
+  assertTrashPath(relPath: string): string {
+    const resolved = this.abs(relPath);
+    const trashRoot = path.join(this.metaDir, 'trash');
+    if (!resolved.startsWith(trashRoot + path.sep)) {
+      throw new Error(`Not a trash path: ${relPath}`);
+    }
+    return resolved;
+  }
+
   /** The product slug (top-level docs/ folder) for a vault-relative doc path. */
   productOf(relPath: string): string | null {
     const parts = relPath.split('/');

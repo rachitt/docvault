@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -24,15 +25,16 @@ import {
   type Template,
   type TemplateMeta,
 } from './template.js';
-import type {
-  Doc,
-  DocMeta,
-  DocStatus,
-  Product,
-  SearchHit,
-  SearchOptions,
-  TrashEntry,
-  VaultConfig,
+import {
+  DEFAULT_CONFIG,
+  type Doc,
+  type DocMeta,
+  type DocStatus,
+  type Product,
+  type SearchHit,
+  type SearchOptions,
+  type TrashEntry,
+  type VaultConfig,
 } from './types.js';
 import { Vault } from './vault.js';
 import { VaultWatcher, type VaultChange } from './watcher.js';
@@ -103,6 +105,18 @@ export class DocVault {
   /** Surfaces a background-embedding failure to callers/tests that care. */
   private lastEmbedError: unknown = null;
 
+  /**
+   * Cached vault config, used to gate the embedding pipeline and semantic
+   * queries on `semanticEnabled`. Loaded at open() and refreshed by
+   * readConfig()/updateConfig() — every config writer in this process goes
+   * through {@link updateConfig}. A second process sharing the vault won't see
+   * a toggle until it reopens; acceptable for a local-first app.
+   */
+  private config: VaultConfig = { ...DEFAULT_CONFIG };
+
+  /** In-flight auto-backfill kicked off by re-enabling semanticEnabled. */
+  private pendingBackfill: Promise<void> | null = null;
+
   private constructor(vault: Vault, embedder: Embedder) {
     this.vault = vault;
     this.docs = new DocStore(vault);
@@ -116,6 +130,8 @@ export class DocVault {
     const vault = new Vault(root);
     await vault.ensure();
     const dv = new DocVault(vault, opts.embedder ?? new TransformersEmbedder());
+    // Load config before reindexing so semanticEnabled gates the open path too.
+    dv.config = await vault.readConfig();
     await dv.reindexAll();
     await dv.purgeExpiredTrash();
     return dv;
@@ -124,14 +140,45 @@ export class DocVault {
   /** How long a trashed item is kept before it is permanently purged. */
   static readonly TRASH_TTL_MS = 24 * 60 * 60 * 1000;
 
-  /** Rebuild the entire index from the markdown files on disk. */
-  async reindexAll(): Promise<number> {
-    this.index.clear();
+  /**
+   * Bring the index in sync with the markdown files on disk — incrementally.
+   * A doc whose indexed row matches on relPath + id + `updated` timestamp is
+   * skipped outright (no upsert, no re-embed), so its stored chunk embeddings
+   * survive; only new/changed docs are (re)indexed and re-embedded, and rows
+   * whose file vanished from disk are dropped (chunks included). Runs on every
+   * open() — it must NOT clear the DB, which is shared with sibling processes
+   * (desktop sidecar + a separate MCP client) and holds expensive embeddings.
+   *
+   * Pass `force: true` for an explicit full rebuild (old behavior: wipe all
+   * tables, re-index and re-embed everything).
+   *
+   * Returns the number of docs actually (re)indexed (0 on a no-op reopen).
+   */
+  async reindexAll(opts: { force?: boolean } = {}): Promise<number> {
+    if (opts.force) this.index.clear();
+    const indexed = new Map(this.index.listMeta().map((m) => [m.relPath, m]));
     const paths = await this.docs.list();
+    const onDisk = new Set(paths);
     let count = 0;
     for (const relPath of paths) {
       try {
         const doc = await this.docs.read(relPath);
+        const prev = indexed.get(relPath);
+        // Docs missing frontmatter id/updated get fresh values on every read
+        // (parseDoc), so they never compare equal → treated as changed.
+        const unchanged =
+          prev !== undefined &&
+          prev.id === doc.frontmatter.id &&
+          prev.updated === doc.frontmatter.updated;
+        if (unchanged) {
+          // Identity match: keep the row and its chunks. Self-heal a doc whose
+          // embedding never completed (process killed mid-embed, or indexed
+          // while semanticEnabled was off) — no-op when chunks are present.
+          if (!this.index.hasChunks(doc.frontmatter.id)) {
+            this.enqueueEmbed(doc.frontmatter.id, doc.content);
+          }
+          continue;
+        }
         this.index.upsert(doc);
         // Embedding is fired off in the background (see enqueueEmbed) so a full
         // reindex returns as soon as FTS/metadata are ready; vectors fill in
@@ -141,6 +188,22 @@ export class DocVault {
         count++;
       } catch {
         /* skip unreadable file */
+      }
+    }
+    // Drop rows (and, via the indexer, their chunks) for files gone from disk.
+    // docs.list() only walks docs/, but imported sidecars are indexed under
+    // assets/ — for those, check disk existence directly instead.
+    for (const m of indexed.values()) {
+      if (m.relPath.startsWith('docs/')) {
+        if (!onDisk.has(m.relPath)) this.index.removeByPath(m.relPath);
+      } else {
+        let exists = false;
+        try {
+          exists = existsSync(this.vault.abs(m.relPath));
+        } catch {
+          /* path escapes the vault → treat as gone */
+        }
+        if (!exists) this.index.removeByPath(m.relPath);
       }
     }
     return count;
@@ -180,6 +243,10 @@ export class DocVault {
    * are swallowed into lastEmbedError so the index path never rejects.
    */
   private enqueueEmbed(docId: string, content: string): void {
+    // Semantic search off: skip queueing entirely. The embedder lazy-loads its
+    // model on the first embed() call (see TransformersEmbedder), so gating
+    // here also keeps the model from ever loading while disabled.
+    if (!this.config.semanticEnabled) return;
     const prev = this.embedQueue.get(docId) ?? Promise.resolve();
     const next = prev
       .catch(() => undefined)
@@ -220,6 +287,7 @@ export class DocVault {
   async backfillEmbeddings(
     onProgress?: (p: { done: number; total: number; docId: string }) => void,
   ): Promise<number> {
+    if (!this.config.semanticEnabled) return 0;
     const ids = this.index.docIdsWithoutChunks();
     let done = 0;
     for (const id of ids) {
@@ -253,6 +321,14 @@ export class DocVault {
     query: string,
     opts: { k?: number; product?: string; tag?: string } = {},
   ): Promise<SemanticHit[]> {
+    // Throw (not []) so an explicit mode=semantic MCP call gets a clear error
+    // instead of silently-empty results; the desktop never calls this when
+    // disabled (the renderer falls back to FTS).
+    if (!this.config.semanticEnabled) {
+      throw new Error(
+        'Semantic search is disabled (enable semanticEnabled in the vault config).',
+      );
+    }
     const [vec] = await this.embedder.embed([query]);
     if (!vec) return [];
     return this.index.searchSemantic(vec, opts);
@@ -267,6 +343,18 @@ export class DocVault {
     query: string,
     opts: { k?: number; product?: string; tag?: string; rrfK?: number } = {},
   ): Promise<HybridHit[]> {
+    // Semantic disabled → degrade to FTS-only (don't embed the query) so the
+    // default "hybrid" search mode keeps working everywhere.
+    if (!this.config.semanticEnabled) {
+      return this.index
+        .search({
+          query,
+          limit: opts.k ?? 10,
+          ...(opts.product ? { product: opts.product } : {}),
+          ...(opts.tag ? { tag: opts.tag } : {}),
+        })
+        .map((h) => ({ ...h, score: 0, inFts: true, inSemantic: false }));
+    }
     const [vec] = await this.embedder.embed([query]);
     if (!vec) return this.index.search({ query, limit: opts.k ?? 10 }).map((h) => ({
       ...h,
@@ -288,7 +376,11 @@ export class DocVault {
   /** Read full doc content by id (via index) or by vault-relative path. */
   async readDoc(idOrPath: string): Promise<Doc> {
     const meta = this.index.getById(idOrPath);
-    return this.docs.read(meta ? meta.relPath : idOrPath);
+    const relPath = meta ? meta.relPath : idOrPath;
+    // Reads are scoped to managed docs + imported markdown sidecars; templates
+    // have dedicated APIs and .docvault/ (config, index, trash) is never a doc.
+    this.vault.assertDocPath(relPath, { allowAssets: true, mdOnly: true });
+    return this.docs.read(relPath);
   }
 
   backlinks(id: string): DocMeta[] {
@@ -303,6 +395,9 @@ export class DocVault {
    * heading breadcrumb + similarity score, like {@link searchSemantic}.
    */
   relatedDocs(id: string, opts: { k?: number } = {}): SemanticHit[] {
+    // Disabled → graceful empty list: matches the documented MCP contract
+    // ("empty if … semantic indexing disabled") and the renderer's empty state.
+    if (!this.config.semanticEnabled) return [];
     return this.index.relatedDocs(id, opts);
   }
 
@@ -393,6 +488,10 @@ export class DocVault {
     relPath: string,
     patch: Parameters<DocStore['update']>[1],
   ): Promise<Doc> {
+    // Mutations are scoped strictly to docs/*.md: the desktop never edits
+    // imported sidecars (they render read-only and are regenerated from the
+    // original by the watcher), and templates/.docvault must stay unreachable.
+    this.vault.assertDocPath(relPath, { mdOnly: true });
     const doc = await this.docs.update(relPath, patch);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
@@ -401,6 +500,10 @@ export class DocVault {
 
   /** Soft-delete a single doc: move it to trash and drop it from the index. */
   async trashDoc(relPath: string): Promise<void> {
+    // docs/ subtree only (files or folders). The desktop has no delete flow for
+    // imported assets, and allowing assets/ here would let a caller trash an
+    // original out from under its sidecar; templates/.docvault are never docs.
+    this.vault.assertDocPath(relPath);
     let title = path.basename(relPath);
     try {
       title = (await this.docs.read(relPath)).frontmatter.title;
@@ -451,9 +554,17 @@ export class DocVault {
 
   /** Restore a trashed doc/product back to its original location and re-index it. */
   async restoreTrash(trashPath: string): Promise<void> {
+    // The caller-supplied path must point inside .docvault/trash/ — it is only
+    // a lookup key, but gating it here means a crafted value can never name
+    // (or move) anything else even if the entry list is tampered with.
+    this.vault.assertTrashPath(trashPath);
     const cfg = await this.vault.readConfig();
     const entry = cfg.trash.find((e) => e.trashPath === trashPath);
     if (!entry) throw new Error(`No trash entry: ${trashPath}`);
+    // Defense in depth: the recorded destination must itself be a doc path
+    // (docs/, or assets/ for legacy sidecar deletions), so a forged config
+    // entry can't restore a file over .docvault/ or templates/.
+    this.vault.assertDocPath(entry.relPath, { allowAssets: true });
     await this.docs.restore(entry.trashPath, entry.relPath);
     await this.reindexUnder(entry.relPath);
     // Functional filter so a concurrent trash() doesn't get clobbered.
@@ -507,6 +618,8 @@ export class DocVault {
 
   /** Add an explicit outbound link from one doc to a target doc id. */
   async linkDocs(fromPath: string, targetId: string): Promise<Doc> {
+    // Rewrites the source doc's frontmatter — same scope as updateDoc.
+    this.vault.assertDocPath(fromPath, { mdOnly: true });
     const doc = await this.docs.read(fromPath);
     const links = new Set(doc.frontmatter.links ?? []);
     links.add(targetId);
@@ -571,6 +684,8 @@ export class DocVault {
     const block = heading + serializeMermaidFence(source);
 
     if (input.path) {
+      // Appending rewrites the target doc — same scope as updateDoc.
+      this.vault.assertDocPath(input.path, { mdOnly: true });
       const existing = await this.docs.read(input.path);
       const content = `${existing.content.trimEnd()}\n\n${block}\n`;
       return this.updateDoc(input.path, { content });
@@ -646,12 +761,32 @@ export class DocVault {
 
   // --- Config helpers ----------------------------------------------------
 
-  readConfig(): Promise<VaultConfig> {
-    return this.vault.readConfig();
+  async readConfig(): Promise<VaultConfig> {
+    const cfg = await this.vault.readConfig();
+    this.config = cfg; // keep the semanticEnabled gate fresh on every read
+    return cfg;
   }
 
-  updateConfig(patch: Partial<VaultConfig>): Promise<VaultConfig> {
-    return this.vault.updateConfig(patch);
+  async updateConfig(patch: Partial<VaultConfig>): Promise<VaultConfig> {
+    const wasEnabled = this.config.semanticEnabled;
+    const next = await this.vault.updateConfig(patch);
+    this.config = next;
+    if (!wasEnabled && next.semanticEnabled) {
+      // Re-enabled: embed the backlog accumulated while disabled. Incremental
+      // and idempotent (backfill only touches docs lacking chunks), so racing
+      // an explicit backfill (e.g. the desktop Settings toggle) is harmless.
+      // Fire-and-forget — a failure surfaces via takeEmbedError(), like the
+      // rest of the background embedding pipeline.
+      this.pendingBackfill = this.backfillEmbeddings()
+        .then(() => undefined)
+        .catch((err) => {
+          this.lastEmbedError = err;
+        })
+        .finally(() => {
+          this.pendingBackfill = null;
+        });
+    }
+    return next;
   }
 
   async toggleStar(docId: string): Promise<boolean> {
@@ -673,7 +808,7 @@ export class DocVault {
 
   // --- Watching ----------------------------------------------------------
 
-  startWatching(onChange?: (c: VaultChange) => void): void {
+  startWatching(onChange?: (c: VaultChange) => void, onError?: (err: Error) => void): void {
     if (this.watcher) return;
     // Re-embed on watcher upserts (external edits / re-extracted imports). The
     // watcher has already updated FTS via index.upsert; we read back the doc id
@@ -690,7 +825,7 @@ export class DocVault {
       }
       onChange?.(c);
     };
-    this.watcher = new VaultWatcher(this.vault, this.index, handle);
+    this.watcher = new VaultWatcher(this.vault, this.index, handle, onError);
     this.watcher.start();
   }
 
@@ -698,6 +833,7 @@ export class DocVault {
     await this.watcher?.stop();
     // Let any in-flight background embedding finish writing before the DB closes,
     // so a queued replaceChunks() can't hit a closed handle.
+    await this.pendingBackfill;
     await this.whenEmbeddingsSettled();
     this.index.close();
   }

@@ -245,6 +245,19 @@ export class Indexer {
     return row ? this.rowToMeta(row, this.tagsByDoc([id]).get(id) ?? []) : null;
   }
 
+  /**
+   * Minimal identity rows for every indexed doc — drives the incremental
+   * reindex: `relPath + id + updated` is the change-detection key.
+   */
+  listMeta(): { id: string; relPath: string; updated: string }[] {
+    const rows = this.db.prepare('SELECT id, rel_path, updated FROM docs').all() as {
+      id: string;
+      rel_path: string;
+      updated: string;
+    }[];
+    return rows.map((r) => ({ id: r.id, relPath: r.rel_path, updated: r.updated }));
+  }
+
   /** Look up a doc's id by its vault-relative path (or null if not indexed). */
   idByPath(relPath: string): string | null {
     const row = this.db.prepare('SELECT id FROM docs WHERE rel_path = ?').get(relPath) as
@@ -315,7 +328,11 @@ export class Indexer {
       .all() as { tag: string; count: number }[];
   }
 
-  /** Clear everything (used by full reindex). */
+  /**
+   * Clear everything. Only for an explicitly-forced full rebuild
+   * (`reindexAll({ force: true })`) — never on the regular open path, since the
+   * index DB is shared between processes and clearing drops all embeddings.
+   */
   clear(): void {
     this.db.exec(
       'DELETE FROM docs; DELETE FROM tags; DELETE FROM links; DELETE FROM docs_fts; DELETE FROM chunks;',

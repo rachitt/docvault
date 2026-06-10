@@ -68,7 +68,9 @@ const relPath = nonEmpty
 async function main(): Promise<void> {
   const vaultDir = resolveVaultDir();
   const dv = await DocVault.open(vaultDir);
-  dv.startWatching();
+  // stderr only: stdout is the MCP protocol channel. A watcher error must not
+  // kill the sidecar; log it and keep serving.
+  dv.startWatching(undefined, (err) => console.error('[docvault-mcp] watcher error:', err));
   console.error(`[docvault-mcp] vault ready at ${vaultDir}`);
 
   const server = new McpServer({ name: 'docvault', version: '0.1.0' });
@@ -450,6 +452,70 @@ async function main(): Promise<void> {
       },
     },
     tool(({ id_or_path, name }) => dv.saveAsTemplate(id_or_path, { name })),
+  );
+
+  // --- Config --------------------------------------------------------------
+  // The vault config (.docvault/config.json) has a single writer: this sidecar
+  // (core serializes updates and writes atomically). The desktop app routes its
+  // config mutations through these tools so a concurrent trash/star/recent
+  // update is never clobbered by a stale read-modify-write in another process.
+
+  server.registerTool(
+    'get_config',
+    {
+      title: 'Get config',
+      description:
+        'Read the vault config: workspace name, starred/recent doc ids, trash entries, AI backend, and theme.',
+    },
+    tool(() => dv.readConfig()),
+  );
+
+  server.registerTool(
+    'update_config',
+    {
+      title: 'Update config',
+      description:
+        'Update user-settable vault config fields and return the full updated config. ' +
+        'Starred/recent are managed via toggle_star / push_recent, and trash via delete_doc / restore_trash — not here.',
+      inputSchema: {
+        workspaceName: nonEmpty.optional().describe('Display name of the workspace'),
+        aiBackend: z.enum(['claude', 'codex']).optional().describe('CLI backend for the AI panel'),
+        aiStreaming: z.boolean().optional().describe('Stream AI output token-by-token'),
+        semanticEnabled: z.boolean().optional().describe('Enable semantic (vector) search'),
+        theme: z.enum(['light', 'dark', 'system']).optional().describe('UI color theme'),
+      },
+    },
+    tool((patch) =>
+      // Drop absent/undefined keys so they can't overwrite stored values.
+      dv.updateConfig(Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))),
+    ),
+  );
+
+  server.registerTool(
+    'toggle_star',
+    {
+      title: 'Toggle star',
+      description: 'Star or unstar a doc by id. Returns the full updated config.',
+      inputSchema: { id: nonEmpty.describe('Doc id (ULID)') },
+    },
+    tool(async ({ id }) => {
+      await dv.toggleStar(id);
+      return dv.readConfig();
+    }),
+  );
+
+  server.registerTool(
+    'push_recent',
+    {
+      title: 'Push recent',
+      description:
+        'Record a doc as most-recently opened (deduped, capped list). Returns the full updated config.',
+      inputSchema: { id: nonEmpty.describe('Doc id (ULID)') },
+    },
+    tool(async ({ id }) => {
+      await dv.pushRecent(id);
+      return dv.readConfig();
+    }),
   );
 
   const transport = new StdioServerTransport();

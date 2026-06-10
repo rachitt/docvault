@@ -49,6 +49,16 @@ describe('renderMarkdownToHtml', () => {
     expect(html).not.toContain('href="/docs/missing');
   });
 
+  it('leaves wikilinks inside fenced blocks and inline code as literal text', async () => {
+    const md = ['```', '[[Doc]] in a fence', '```', '', 'Inline `[[Doc]]` and [[Doc]].'].join('\n');
+    const { html } = await renderMarkdownToHtml(md, { resolveLink: () => '/doc.html' });
+    // Code keeps the literal bracket syntax; only the prose occurrence links.
+    expect(html).toContain('[[Doc]] in a fence');
+    expect(html).toContain('<code>[[Doc]]</code>');
+    expect(html).toContain('<a href="/doc.html">Doc</a>');
+    expect(html.match(/<a /g)).toHaveLength(1);
+  });
+
   it('honours wikilink aliases', async () => {
     const { html } = await renderMarkdownToHtml('[[architecture|the design]]', {
       resolveLink: () => '/a.html',

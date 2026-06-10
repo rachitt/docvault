@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -50,6 +51,19 @@ describe('DocVault core', () => {
     expect(hits.length).toBe(1);
     expect(hits[0]?.id).toBe(created.frontmatter.id);
     expect(hits[0]?.snippet).toContain('«observability»');
+  });
+
+  it('reopens incrementally: keeps unchanged docs indexed, drops deleted files', async () => {
+    const kept = await dv.createDoc({ product: 'p', title: 'Keep', content: 'kept content here' });
+    const gone = await dv.createDoc({ product: 'p', title: 'Drop', content: 'dropped content here' });
+    await dv.close();
+    await rm(path.join(root, gone.relPath));
+
+    dv = await DocVault.open(root, { embedder: new StubEmbedder() });
+    expect(dv.listDocs().map((m) => m.id)).toEqual([kept.frontmatter.id]);
+    expect(dv.getMeta(gone.frontmatter.id)).toBeNull();
+    expect(dv.search({ query: 'kept' })).toHaveLength(1);
+    expect(dv.search({ query: 'dropped' })).toHaveLength(0);
   });
 
   it('filters search by product and tag', async () => {
@@ -221,6 +235,58 @@ describe('DocVault core', () => {
     });
   });
 
+  describe('docs scoping', () => {
+    it('rejects reads and mutations on templates/ and .docvault/ paths', async () => {
+      await writeFile(path.join(root, 'templates', 'tpl.md'), '# tpl', 'utf8');
+      for (const p of ['templates/tpl.md', '.docvault/config.json']) {
+        await expect(dv.readDoc(p)).rejects.toThrow(/outside docs/);
+        await expect(dv.updateDoc(p, { content: 'pwned' })).rejects.toThrow(/outside docs/);
+        await expect(dv.trashDoc(p)).rejects.toThrow(/outside docs/);
+      }
+      // Neither target was touched.
+      expect(await readFile(path.join(root, 'templates', 'tpl.md'), 'utf8')).toBe('# tpl');
+      expect((await dv.readConfig()).trash).toHaveLength(0);
+    });
+
+    it('reads an imported sidecar but refuses to update or trash it', async () => {
+      const src = path.join(root, 'spec.txt');
+      await writeFile(src, 'imported spec body', 'utf8');
+      const imported = await dv.importFile(src);
+      expect(imported.relPath).toBe('assets/spec.txt.md');
+
+      const read = await dv.readDoc(imported.relPath);
+      expect(read.content).toContain('imported spec body');
+      // Sidecars render read-only in the app and are regenerated from the
+      // original on change — they are not mutation targets.
+      await expect(dv.updateDoc(imported.relPath, { content: 'x' })).rejects.toThrow(/outside docs/);
+      await expect(dv.trashDoc(imported.relPath)).rejects.toThrow(/outside docs/);
+      // The imported original (non-markdown) is not readable as a doc either.
+      await expect(dv.readDoc('assets/spec.txt')).rejects.toThrow(/markdown/);
+    });
+
+    it('rejects link/diagram/template operations on non-docs paths', async () => {
+      await writeFile(path.join(root, 'templates', 'tpl.md'), '# tpl', 'utf8');
+      const target = await dv.createDoc({ product: 'p', title: 'Target', content: 'hi' });
+      await expect(dv.linkDocs('templates/tpl.md', target.frontmatter.id)).rejects.toThrow(
+        /outside docs/,
+      );
+      await expect(
+        dv.createDiagram({ code: 'flowchart TD\n A-->B', path: '.docvault/config.json' }),
+      ).rejects.toThrow(/outside docs/);
+      await expect(dv.saveAsTemplate('templates/tpl.md', { name: 'Copy' })).rejects.toThrow(
+        /outside docs/,
+      );
+    });
+
+    it('rejects restoreTrash with a trashPath outside .docvault/trash', async () => {
+      const doc = await dv.createDoc({ product: 'p', title: 'Live', content: 'still here' });
+      await expect(dv.restoreTrash(doc.relPath)).rejects.toThrow(/Not a trash path/);
+      await expect(dv.restoreTrash('templates/tpl.md')).rejects.toThrow(/Not a trash path/);
+      // The doc was not moved by the failed restore.
+      expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+    });
+  });
+
   it('refuses to restore over a file that reclaimed the original path', async () => {
     const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'first' });
     await dv.trashDoc(doc.relPath);
@@ -289,6 +355,21 @@ describe('DocVault core', () => {
     const reread = await dv.readDoc(imported.frontmatter.id);
     expect(reread.content).toContain('zebra');
   }, 20000);
+
+  it('surfaces watcher errors via onError instead of crashing (watcher)', async () => {
+    const errors: Error[] = [];
+    dv.startWatching(undefined, (err) => errors.push(err));
+    // Synthesize an emitter-level fs error (e.g. file-descriptor exhaustion).
+    // Without an 'error' listener this would throw from the EventEmitter and
+    // kill the process; with the handler it is logged and surfaced instead.
+    const fsWatcher = (dv as unknown as { watcher: { watcher: EventEmitter } }).watcher.watcher;
+    fsWatcher.emit('error', new Error('EMFILE: too many open files'));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain('EMFILE');
+    // The vault keeps working after the error.
+    await dv.createDoc({ product: 'p', title: 'Still alive', content: 'post-error giraffe' });
+    expect(dv.search({ query: 'giraffe' })).toHaveLength(1);
+  });
 });
 
 /** Poll until `cond` is true or the timeout elapses. */

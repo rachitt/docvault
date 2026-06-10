@@ -16,7 +16,7 @@
  */
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
-import { splitMarkdownSegments, type CalloutType } from '../markdown.js';
+import { splitMarkdownSegments, transformOutsideCode, type CalloutType } from '../markdown.js';
 import type { Doc } from '../types.js';
 
 export interface RenderHtmlOptions {
@@ -66,18 +66,22 @@ const WIKILINK = /\[\[([^\]\n]+?)\]\]/g;
 /**
  * Replace `[[target]]` / `[[target|alias]]` with a markdown link (when the
  * target resolves) or its plain label, so markdown-it renders the rest normally.
+ * Fenced code blocks and inline code spans are skipped — a [[wikilink]] there
+ * is literal source and must render as-is.
  */
 function substituteWikilinks(text: string, resolveLink?: RenderHtmlOptions['resolveLink']): string {
-  return text.replace(WIKILINK, (_m, inner: string) => {
-    const [rawTarget, rawAlias] = inner.split('|');
-    const target = (rawTarget ?? '').trim();
-    const label = (rawAlias ?? rawTarget ?? '').trim();
-    const href = resolveLink?.(target) ?? null;
-    if (!href) return label;
-    // Escape markdown-significant chars in the label so it stays literal text.
-    const safeLabel = label.replace(/([[\]()\\])/g, '\\$1');
-    return `[${safeLabel}](${href})`;
-  });
+  return transformOutsideCode(text, (chunk) =>
+    chunk.replace(WIKILINK, (_m, inner: string) => {
+      const [rawTarget, rawAlias] = inner.split('|');
+      const target = (rawTarget ?? '').trim();
+      const label = (rawAlias ?? rawTarget ?? '').trim();
+      const href = resolveLink?.(target) ?? null;
+      if (!href) return label;
+      // Escape markdown-significant chars in the label so it stays literal text.
+      const safeLabel = label.replace(/([[\]()\\])/g, '\\$1');
+      return `[${safeLabel}](${href})`;
+    }),
+  );
 }
 
 /** Walk a token tree (inline tokens nest children) yielding every token. */
