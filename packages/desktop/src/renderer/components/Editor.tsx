@@ -36,6 +36,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const [ready, setReady] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [conflict, setConflict] = useState<Doc | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Content the editor was last loaded from / last wrote — the on-disk baseline
   // used to distinguish our own saves (echoed back by the watcher) from real
@@ -43,6 +44,17 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
   const baselineRef = useRef(doc.content);
   const dirtyRef = useRef(false);
   const conflictRef = useRef<Doc | null>(null);
+  // Monotonic edit counter: each keystroke bumps it, and a save only clears
+  // dirtyRef if no edits arrived between its serialization and its completion.
+  const editSeqRef = useRef(0);
+  // Saves are chained so two saves of this doc can never run (or land on disk)
+  // out of order — e.g. a debounce-fired save racing the unmount flush.
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  // The doc can be renamed while open (same id, new relPath); always save to
+  // the latest path. Also lets the unmount flush target THIS doc, not whatever
+  // the store considers current by then.
+  const relPathRef = useRef(doc.relPath);
+  relPathRef.current = doc.relPath;
 
   const starred = config?.starred.includes(doc.frontmatter.id) ?? false;
   const deskActive = document.documentElement.classList.contains('desk');
@@ -84,9 +96,56 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload only on nonce
   }, [editor, reloadNonce]);
 
+  /**
+   * Serialize the editor and write it to disk. The on-disk baseline / dirty
+   * flag only move AFTER the save succeeds — a rejected save keeps the editor
+   * dirty (so the watcher can't clobber it with stale disk state) and surfaces
+   * an error banner instead of silently dropping the edits.
+   */
+  const performSave = useCallback(async (): Promise<void> => {
+    // Don't overwrite an unresolved external change, and skip when a previous
+    // save in this chain already wrote the latest content.
+    if (conflictRef.current || !dirtyRef.current) return;
+    const seq = editSeqRef.current;
+    const md = await blocksToMarkdown(editor, editor.document);
+    try {
+      const saved = await saveCurrent(md, relPathRef.current);
+      baselineRef.current = saved?.content ?? md;
+      // Keystrokes that arrived during the awaits above are NOT in `md`; leave
+      // dirtyRef set so their pending debounce saves them.
+      if (editSeqRef.current === seq) dirtyRef.current = false;
+      setSaveError(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    }
+  }, [editor, saveCurrent]);
+
+  /** Run performSave after any in-flight save, so writes stay ordered. */
+  const queueSave = useCallback((): Promise<void> => {
+    saveChainRef.current = saveChainRef.current.then(performSave);
+    return saveChainRef.current;
+  }, [performSave]);
+
+  // Latest-callback ref so the one-time unmount/unload flush below always uses
+  // the current save routine without re-subscribing.
+  const queueSaveRef = useRef(queueSave);
+  queueSaveRef.current = queueSave;
+
+  // Flush any pending debounced save when the editor goes away (doc switch,
+  // view change, unmount) or the window unloads — otherwise up to 600ms of
+  // typing is silently discarded.
   useEffect(() => {
+    const flush = (): void => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      if (dirtyRef.current) void queueSaveRef.current();
+    };
+    window.addEventListener('beforeunload', flush);
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      window.removeEventListener('beforeunload', flush);
+      flush();
       document.documentElement.classList.remove('dv-text-toolbar-active');
     };
   }, []);
@@ -98,6 +157,7 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
       dirtyRef.current = false;
       conflictRef.current = null;
       setConflict(null);
+      setSaveError(null);
       setCurrentDoc(fresh);
       setReloadNonce((n) => n + 1);
     },
@@ -131,26 +191,21 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
 
   const onChange = (): void => {
     if (!ready) return;
+    editSeqRef.current += 1;
     dirtyRef.current = true;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      // Don't overwrite an unresolved external change.
-      if (conflictRef.current) return;
-      const md = await blocksToMarkdown(editor, editor.document);
-      baselineRef.current = md;
-      dirtyRef.current = false;
-      void saveCurrent(md);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void queueSave();
     }, 600);
   };
 
   /** Keep the local edits: write them over the on-disk version. */
-  const keepMine = async (): Promise<void> => {
+  const keepMine = (): void => {
     conflictRef.current = null;
     setConflict(null);
-    const md = await blocksToMarkdown(editor, editor.document);
-    baselineRef.current = md;
-    dirtyRef.current = false;
-    void saveCurrent(md);
+    dirtyRef.current = true;
+    void queueSave();
   };
 
   return (
@@ -166,10 +221,24 @@ export function Editor({ doc }: { doc: Doc }): React.JSX.Element {
               Reload (discard mine)
             </button>
             <button
-              onClick={() => void keepMine()}
+              onClick={keepMine}
               className="rounded-md border border-amber-400 px-2.5 py-1 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40"
             >
               Keep mine
+            </button>
+          </div>
+        )}
+        {saveError && !conflict && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-900 dark:border-red-700/60 dark:bg-red-900/20 dark:text-red-200">
+            <AlertTriangle size={16} className="shrink-0" />
+            <span className="flex-1">
+              Save failed — your edits are kept in the editor. {saveError}
+            </span>
+            <button
+              onClick={() => void queueSave()}
+              className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+            >
+              Retry
             </button>
           </div>
         )}

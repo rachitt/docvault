@@ -2,24 +2,22 @@ import { existsSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ulid } from 'ulid';
-import { parseDoc, serializeDoc } from '../doc.js';
+import { parseDoc, serializeDoc, uniqueStem } from '../doc.js';
 import type { Doc } from '../types.js';
 import type { Vault } from '../vault.js';
 
 /**
  * Pick a destination path inside assets/ that doesn't already exist, so
  * importing two files with the same basename never overwrites the first.
+ * Also avoids any name whose `<file>.md` sidecar already exists.
  */
 function uniqueDest(dir: string, baseName: string): string {
   const ext = path.extname(baseName);
-  const stem = path.basename(baseName, ext);
-  let candidate = path.join(dir, baseName);
-  let n = 1;
-  while (existsSync(candidate) || existsSync(`${candidate}.md`)) {
-    candidate = path.join(dir, `${stem}-${n}${ext}`);
-    n++;
-  }
-  return candidate;
+  const stem = uniqueStem(path.basename(baseName, ext), (s) => {
+    const candidate = path.join(dir, `${s}${ext}`);
+    return existsSync(candidate) || existsSync(`${candidate}.md`);
+  });
+  return path.join(dir, `${stem}${ext}`);
 }
 import { extractDocx } from './docx.js';
 import { extractPdf } from './pdf.js';

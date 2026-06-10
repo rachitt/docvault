@@ -8,11 +8,15 @@ import type { Vault } from './vault.js';
 
 const nowIso = (): string => new Date().toISOString();
 
-/** Turn an arbitrary title into a safe kebab-case filename stem. */
+/**
+ * Turn an arbitrary title into a safe kebab-case filename stem. Unicode letters
+ * and numbers are preserved (so e.g. "日本語ガイド" keeps a distinct slug rather
+ * than collapsing to `untitled`); everything else becomes a `-` separator.
+ */
 export function slugify(title: string): string {
   const base = title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/(^-|-$)/g, '');
   return base || 'untitled';
 }
@@ -20,13 +24,26 @@ export function slugify(title: string): string {
 /**
  * Validate a single path segment (product slug / filename stem) supplied by a
  * caller before it is composed into a vault path. Rejects separators, `..`, and
- * other characters that could traverse out of the intended folder.
+ * other characters that could traverse out of the intended folder. Unicode
+ * letters/numbers are allowed so slugified non-Latin titles remain valid stems.
  */
 export function assertSafeSegment(segment: string, kind = 'segment'): string {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(segment) || segment.includes('..')) {
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]*$/u.test(segment) || segment.includes('..')) {
     throw new Error(`Invalid ${kind}: ${segment}`);
   }
   return segment;
+}
+
+/**
+ * Append -1, -2, ... to `stem` until `taken(candidate)` returns false, so a new
+ * file never silently overwrites an existing one that already owns the name.
+ * Shared by doc creation and the importer's destination picker.
+ */
+export function uniqueStem(stem: string, taken: (candidate: string) => boolean): string {
+  let candidate = stem;
+  let n = 1;
+  while (taken(candidate)) candidate = `${stem}-${n++}`;
+  return candidate;
 }
 
 /** Coerce an arbitrary frontmatter value into a valid DocStatus. */
@@ -87,7 +104,12 @@ export class DocStore {
     return parseDoc(raw, this.vault, absPath);
   }
 
-  /** Walk docs/ and return every managed markdown file (vault-relative paths). */
+  /**
+   * Return every managed markdown file (vault-relative paths): docs under
+   * docs/ plus import sidecars under assets/ (`assets/<file>.md`). Both are
+   * indexed, watched, and re-indexed on open — keeping this walk in sync with
+   * the watcher's coverage is what makes imported docs survive a restart.
+   */
   async list(): Promise<string[]> {
     const out: string[] = [];
     const walk = async (dir: string): Promise<void> => {
@@ -107,6 +129,7 @@ export class DocStore {
       }
     };
     await walk(this.vault.docsDir);
+    await walk(this.vault.assetsDir);
     return out.sort();
   }
 
@@ -118,10 +141,15 @@ export class DocStore {
     return next;
   }
 
-  /** Create a brand-new doc under docs/<product>/, returning the saved Doc. */
+  /**
+   * Create a brand-new doc under docs/<product>/, returning the saved Doc.
+   * If the slug is already taken on disk the stem is suffixed (-1, -2, …) so
+   * creating "Overview" twice never overwrites the existing overview.md.
+   */
   async create(input: CreateDocInput): Promise<Doc> {
     const product = assertSafeSegment(input.product, 'product');
-    const stem = assertSafeSegment(input.stem ?? slugify(input.title), 'stem');
+    const base = assertSafeSegment(input.stem ?? slugify(input.title), 'stem');
+    const stem = uniqueStem(base, (s) => existsSync(this.vault.abs(`docs/${product}/${s}.md`)));
     const relPath = `docs/${product}/${stem}.md`;
     const absPath = this.vault.abs(relPath);
     const created = nowIso();

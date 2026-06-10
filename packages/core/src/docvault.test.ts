@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { slugify } from './doc.js';
 import { DocVault } from './docvault.js';
 import type { Embedder } from './embed.js';
 import { toFtsMatch } from './indexer.js';
@@ -80,6 +81,43 @@ describe('DocVault core', () => {
 
     const hits = dv.search({ query: 'roadmap' });
     expect(hits.some((h) => h.id === doc.frontmatter.id)).toBe(true);
+  });
+
+  it('creating the same title twice yields two docs instead of overwriting', async () => {
+    const first = await dv.createDoc({ product: 'p', title: 'Overview', content: 'original body' });
+    const second = await dv.createDoc({ product: 'p', title: 'Overview', content: 'newer body' });
+    expect(first.relPath).toBe('docs/p/overview.md');
+    expect(second.relPath).toBe('docs/p/overview-1.md');
+    // The first doc's file is untouched on disk and both stay indexed.
+    expect((await dv.readDoc(first.frontmatter.id)).content).toContain('original body');
+    expect((await dv.readDoc(second.frontmatter.id)).content).toContain('newer body');
+    expect(dv.listDocs({ product: 'p' })).toHaveLength(2);
+    expect(dv.search({ query: 'original' })).toHaveLength(1);
+    expect(dv.search({ query: 'newer' })).toHaveLength(1);
+  });
+
+  it('gives non-ASCII titles distinct slugs instead of colliding at untitled', async () => {
+    const ja = await dv.createDoc({ product: 'p', title: '日本語ガイド', content: 'nihongo' });
+    const ru = await dv.createDoc({ product: 'p', title: 'Русский Гид', content: 'russkiy' });
+    expect(ja.relPath).toBe('docs/p/日本語ガイド.md');
+    expect(ru.relPath).toBe('docs/p/русский-гид.md');
+    expect(dv.listDocs({ product: 'p' })).toHaveLength(2);
+    // A title with no letters/numbers at all still falls back to `untitled`.
+    expect(slugify('!!!')).toBe('untitled');
+  });
+
+  it('keeps imported docs in the index across close/reopen', async () => {
+    const src = path.join(root, 'memo.txt');
+    await writeFile(src, 'pelican migration memo', 'utf8');
+    const doc = await dv.importFile(src);
+    expect(dv.search({ query: 'pelican' })).toHaveLength(1);
+
+    await dv.close();
+    dv = await DocVault.open(root, { embedder: new StubEmbedder() });
+
+    expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+    expect(dv.listDocs().some((d) => d.id === doc.frontmatter.id)).toBe(true);
+    expect(dv.search({ query: 'pelican' })).toHaveLength(1);
   });
 
   it('lists products derived from docs/ folders', async () => {
