@@ -250,6 +250,154 @@ describe('semantic + hybrid search', () => {
   });
 });
 
+describe('incremental reindex + semanticEnabled gating', () => {
+  let root: string;
+  let dv: DocVault;
+  let embedder: HashingEmbedder;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'docvault-reindex-'));
+    embedder = new HashingEmbedder();
+    dv = await DocVault.open(root, { embedder });
+  });
+
+  afterEach(async () => {
+    await dv.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('reopening an unchanged vault re-embeds nothing and keeps chunks', async () => {
+    await dv.createDoc({ product: 'p', title: 'A', content: 'alpha beta gamma' });
+    await dv.createDoc({ product: 'p', title: 'B', content: 'delta epsilon zeta' });
+    await dv.whenEmbeddingsSettled();
+    const chunksBefore = dv.index.chunkCount();
+    expect(chunksBefore).toBeGreaterThan(0);
+    await dv.close();
+
+    const embedder2 = new HashingEmbedder();
+    dv = await DocVault.open(root, { embedder: embedder2 });
+    await dv.whenEmbeddingsSettled();
+    // No doc changed → no upserts, no re-embedding, chunks survive verbatim.
+    expect(embedder2.calls).toBe(0);
+    expect(dv.index.chunkCount()).toBe(chunksBefore);
+    expect((await dv.searchSemantic('alpha beta gamma')).length).toBeGreaterThan(0);
+  });
+
+  it('reopening re-embeds only the doc that changed on disk', async () => {
+    const a = await dv.createDoc({ product: 'p', title: 'A', content: 'alpha paragraph' });
+    await dv.createDoc({ product: 'p', title: 'B', content: 'beta paragraph' });
+    await dv.whenEmbeddingsSettled();
+    await dv.close();
+
+    // Edit A on disk while no vault is open, bumping its frontmatter `updated`
+    // timestamp (the change signal the incremental reindex keys on).
+    const abs = path.join(root, a.relPath);
+    const raw = await readFile(abs, 'utf8');
+    await writeFile(
+      abs,
+      raw
+        .replace(/^updated: .*$/m, `updated: '2030-01-01T00:00:00.000Z'`)
+        .replace('alpha', 'omega'),
+      'utf8',
+    );
+
+    const embedder2 = new HashingEmbedder();
+    dv = await DocVault.open(root, { embedder: embedder2 });
+    await dv.whenEmbeddingsSettled();
+    // Exactly A's chunks were re-embedded; B was skipped.
+    expect(embedder2.calls).toBe(dv.index.chunkCountFor(a.frontmatter.id));
+    expect(embedder2.calls).toBeGreaterThan(0);
+    const hits = await dv.searchSemantic('omega paragraph', { k: 5 });
+    expect(hits[0]?.id).toBe(a.frontmatter.id);
+  });
+
+  it('reopening after a doc file was deleted drops its row and chunks', async () => {
+    const a = await dv.createDoc({ product: 'p', title: 'Gone', content: 'soon deleted' });
+    const b = await dv.createDoc({ product: 'p', title: 'Stays', content: 'still here' });
+    await dv.whenEmbeddingsSettled();
+    await dv.close();
+
+    await rm(path.join(root, a.relPath));
+    dv = await DocVault.open(root, { embedder: new HashingEmbedder() });
+    expect(dv.getMeta(a.frontmatter.id)).toBeNull();
+    expect(dv.index.chunkCountFor(a.frontmatter.id)).toBe(0);
+    expect(dv.getMeta(b.frontmatter.id)).not.toBeNull();
+    expect(dv.index.chunkCountFor(b.frontmatter.id)).toBeGreaterThan(0);
+  });
+
+  it('reindexAll({ force: true }) still rebuilds + re-embeds everything', async () => {
+    await dv.createDoc({ product: 'p', title: 'F', content: 'force rebuild me' });
+    await dv.whenEmbeddingsSettled();
+    const before = embedder.calls;
+
+    const n = await dv.reindexAll({ force: true });
+    await dv.whenEmbeddingsSettled();
+    expect(n).toBe(1);
+    expect(embedder.calls).toBeGreaterThan(before);
+  });
+
+  it("opening a second instance on the same vault does not wipe the first one's chunks", async () => {
+    const doc = await dv.createDoc({ product: 'p', title: 'Shared', content: 'shared vault survival' });
+    await dv.whenEmbeddingsSettled();
+    expect(dv.index.chunkCountFor(doc.frontmatter.id)).toBeGreaterThan(0);
+
+    const embedderB = new HashingEmbedder();
+    const dvB = await DocVault.open(root, { embedder: embedderB });
+    try {
+      expect(embedderB.calls).toBe(0);
+      // The first instance's chunks are still there and still queryable.
+      expect(dv.index.chunkCountFor(doc.frontmatter.id)).toBeGreaterThan(0);
+      const hits = await dv.searchSemantic('shared vault survival', { k: 5 });
+      expect(hits[0]?.id).toBe(doc.frontmatter.id);
+    } finally {
+      await dvB.close();
+    }
+  });
+
+  it('semanticEnabled=false gates embedding, backfill, and semantic queries', async () => {
+    await dv.updateConfig({ semanticEnabled: false });
+    const before = embedder.calls;
+
+    const doc = await dv.createDoc({ product: 'p', title: 'Quiet', content: 'no vectors please' });
+    await dv.whenEmbeddingsSettled();
+    expect(embedder.calls).toBe(before); // createDoc enqueued nothing
+    expect(dv.index.chunkCountFor(doc.frontmatter.id)).toBe(0);
+
+    expect(await dv.backfillEmbeddings()).toBe(0);
+    await expect(dv.searchSemantic('no vectors')).rejects.toThrow(/disabled/i);
+    expect(dv.relatedDocs(doc.frontmatter.id)).toEqual([]);
+
+    // Hybrid degrades to FTS-only — still finds the doc, never embeds the query.
+    const hits = await dv.searchHybrid('vectors');
+    expect(hits[0]?.id).toBe(doc.frontmatter.id);
+    expect(hits[0]?.inSemantic).toBe(false);
+    expect(embedder.calls).toBe(before);
+  });
+
+  it('open() with semanticEnabled=false embeds nothing', async () => {
+    await dv.updateConfig({ semanticEnabled: false });
+    await dv.createDoc({ product: 'p', title: 'Backlog', content: 'embed me later' });
+    await dv.close();
+
+    const embedder2 = new HashingEmbedder();
+    dv = await DocVault.open(root, { embedder: embedder2 });
+    await dv.whenEmbeddingsSettled();
+    expect(embedder2.calls).toBe(0);
+    expect(dv.index.chunkCount()).toBe(0);
+  });
+
+  it('re-enabling semanticEnabled via updateConfig backfills the unembedded backlog', async () => {
+    await dv.updateConfig({ semanticEnabled: false });
+    const doc = await dv.createDoc({ product: 'p', title: 'Backlog', content: 'embed this backlog doc' });
+    expect(dv.index.chunkCountFor(doc.frontmatter.id)).toBe(0);
+
+    await dv.updateConfig({ semanticEnabled: true });
+    await waitFor(() => dv.index.chunkCountFor(doc.frontmatter.id) > 0);
+    const hits = await dv.searchSemantic('backlog doc', { k: 5 });
+    expect(hits[0]?.id).toBe(doc.frontmatter.id);
+  });
+});
+
 /** Poll an async condition until true or timeout. */
 async function waitFor(cond: () => Promise<boolean> | boolean, timeoutMs = 15000): Promise<void> {
   const start = Date.now();

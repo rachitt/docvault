@@ -53,6 +53,19 @@ describe('DocVault core', () => {
     expect(hits[0]?.snippet).toContain('«observability»');
   });
 
+  it('reopens incrementally: keeps unchanged docs indexed, drops deleted files', async () => {
+    const kept = await dv.createDoc({ product: 'p', title: 'Keep', content: 'kept content here' });
+    const gone = await dv.createDoc({ product: 'p', title: 'Drop', content: 'dropped content here' });
+    await dv.close();
+    await rm(path.join(root, gone.relPath));
+
+    dv = await DocVault.open(root, { embedder: new StubEmbedder() });
+    expect(dv.listDocs().map((m) => m.id)).toEqual([kept.frontmatter.id]);
+    expect(dv.getMeta(gone.frontmatter.id)).toBeNull();
+    expect(dv.search({ query: 'kept' })).toHaveLength(1);
+    expect(dv.search({ query: 'dropped' })).toHaveLength(0);
+  });
+
   it('filters search by product and tag', async () => {
     await dv.createDoc({ product: 'superchat', title: 'Alpha', content: 'rocket science', tags: ['x'] });
     await dv.createDoc({ product: 'other', title: 'Beta', content: 'rocket fuel', tags: ['y'] });
