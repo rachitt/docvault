@@ -288,7 +288,11 @@ export class DocVault {
   /** Read full doc content by id (via index) or by vault-relative path. */
   async readDoc(idOrPath: string): Promise<Doc> {
     const meta = this.index.getById(idOrPath);
-    return this.docs.read(meta ? meta.relPath : idOrPath);
+    const relPath = meta ? meta.relPath : idOrPath;
+    // Reads are scoped to managed docs + imported markdown sidecars; templates
+    // have dedicated APIs and .docvault/ (config, index, trash) is never a doc.
+    this.vault.assertDocPath(relPath, { allowAssets: true, mdOnly: true });
+    return this.docs.read(relPath);
   }
 
   backlinks(id: string): DocMeta[] {
@@ -393,6 +397,10 @@ export class DocVault {
     relPath: string,
     patch: Parameters<DocStore['update']>[1],
   ): Promise<Doc> {
+    // Mutations are scoped strictly to docs/*.md: the desktop never edits
+    // imported sidecars (they render read-only and are regenerated from the
+    // original by the watcher), and templates/.docvault must stay unreachable.
+    this.vault.assertDocPath(relPath, { mdOnly: true });
     const doc = await this.docs.update(relPath, patch);
     this.index.upsert(doc);
     this.enqueueEmbed(doc.frontmatter.id, doc.content);
@@ -401,6 +409,10 @@ export class DocVault {
 
   /** Soft-delete a single doc: move it to trash and drop it from the index. */
   async trashDoc(relPath: string): Promise<void> {
+    // docs/ subtree only (files or folders). The desktop has no delete flow for
+    // imported assets, and allowing assets/ here would let a caller trash an
+    // original out from under its sidecar; templates/.docvault are never docs.
+    this.vault.assertDocPath(relPath);
     let title = path.basename(relPath);
     try {
       title = (await this.docs.read(relPath)).frontmatter.title;
@@ -451,9 +463,17 @@ export class DocVault {
 
   /** Restore a trashed doc/product back to its original location and re-index it. */
   async restoreTrash(trashPath: string): Promise<void> {
+    // The caller-supplied path must point inside .docvault/trash/ — it is only
+    // a lookup key, but gating it here means a crafted value can never name
+    // (or move) anything else even if the entry list is tampered with.
+    this.vault.assertTrashPath(trashPath);
     const cfg = await this.vault.readConfig();
     const entry = cfg.trash.find((e) => e.trashPath === trashPath);
     if (!entry) throw new Error(`No trash entry: ${trashPath}`);
+    // Defense in depth: the recorded destination must itself be a doc path
+    // (docs/, or assets/ for legacy sidecar deletions), so a forged config
+    // entry can't restore a file over .docvault/ or templates/.
+    this.vault.assertDocPath(entry.relPath, { allowAssets: true });
     await this.docs.restore(entry.trashPath, entry.relPath);
     await this.reindexUnder(entry.relPath);
     // Functional filter so a concurrent trash() doesn't get clobbered.
@@ -507,6 +527,8 @@ export class DocVault {
 
   /** Add an explicit outbound link from one doc to a target doc id. */
   async linkDocs(fromPath: string, targetId: string): Promise<Doc> {
+    // Rewrites the source doc's frontmatter — same scope as updateDoc.
+    this.vault.assertDocPath(fromPath, { mdOnly: true });
     const doc = await this.docs.read(fromPath);
     const links = new Set(doc.frontmatter.links ?? []);
     links.add(targetId);
@@ -571,6 +593,8 @@ export class DocVault {
     const block = heading + serializeMermaidFence(source);
 
     if (input.path) {
+      // Appending rewrites the target doc — same scope as updateDoc.
+      this.vault.assertDocPath(input.path, { mdOnly: true });
       const existing = await this.docs.read(input.path);
       const content = `${existing.content.trimEnd()}\n\n${block}\n`;
       return this.updateDoc(input.path, { content });

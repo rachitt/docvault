@@ -222,6 +222,58 @@ describe('DocVault core', () => {
     });
   });
 
+  describe('docs scoping', () => {
+    it('rejects reads and mutations on templates/ and .docvault/ paths', async () => {
+      await writeFile(path.join(root, 'templates', 'tpl.md'), '# tpl', 'utf8');
+      for (const p of ['templates/tpl.md', '.docvault/config.json']) {
+        await expect(dv.readDoc(p)).rejects.toThrow(/outside docs/);
+        await expect(dv.updateDoc(p, { content: 'pwned' })).rejects.toThrow(/outside docs/);
+        await expect(dv.trashDoc(p)).rejects.toThrow(/outside docs/);
+      }
+      // Neither target was touched.
+      expect(await readFile(path.join(root, 'templates', 'tpl.md'), 'utf8')).toBe('# tpl');
+      expect((await dv.readConfig()).trash).toHaveLength(0);
+    });
+
+    it('reads an imported sidecar but refuses to update or trash it', async () => {
+      const src = path.join(root, 'spec.txt');
+      await writeFile(src, 'imported spec body', 'utf8');
+      const imported = await dv.importFile(src);
+      expect(imported.relPath).toBe('assets/spec.txt.md');
+
+      const read = await dv.readDoc(imported.relPath);
+      expect(read.content).toContain('imported spec body');
+      // Sidecars render read-only in the app and are regenerated from the
+      // original on change — they are not mutation targets.
+      await expect(dv.updateDoc(imported.relPath, { content: 'x' })).rejects.toThrow(/outside docs/);
+      await expect(dv.trashDoc(imported.relPath)).rejects.toThrow(/outside docs/);
+      // The imported original (non-markdown) is not readable as a doc either.
+      await expect(dv.readDoc('assets/spec.txt')).rejects.toThrow(/markdown/);
+    });
+
+    it('rejects link/diagram/template operations on non-docs paths', async () => {
+      await writeFile(path.join(root, 'templates', 'tpl.md'), '# tpl', 'utf8');
+      const target = await dv.createDoc({ product: 'p', title: 'Target', content: 'hi' });
+      await expect(dv.linkDocs('templates/tpl.md', target.frontmatter.id)).rejects.toThrow(
+        /outside docs/,
+      );
+      await expect(
+        dv.createDiagram({ code: 'flowchart TD\n A-->B', path: '.docvault/config.json' }),
+      ).rejects.toThrow(/outside docs/);
+      await expect(dv.saveAsTemplate('templates/tpl.md', { name: 'Copy' })).rejects.toThrow(
+        /outside docs/,
+      );
+    });
+
+    it('rejects restoreTrash with a trashPath outside .docvault/trash', async () => {
+      const doc = await dv.createDoc({ product: 'p', title: 'Live', content: 'still here' });
+      await expect(dv.restoreTrash(doc.relPath)).rejects.toThrow(/Not a trash path/);
+      await expect(dv.restoreTrash('templates/tpl.md')).rejects.toThrow(/Not a trash path/);
+      // The doc was not moved by the failed restore.
+      expect(dv.getMeta(doc.frontmatter.id)).not.toBeNull();
+    });
+  });
+
   it('refuses to restore over a file that reclaimed the original path', async () => {
     const doc = await dv.createDoc({ product: 'p', title: 'Recoverable', content: 'first' });
     await dv.trashDoc(doc.relPath);
