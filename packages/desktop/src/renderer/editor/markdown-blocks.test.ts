@@ -63,6 +63,18 @@ describe('splitMarkdownSegments', () => {
     ]);
   });
 
+  it('keeps a ```mermaid example inside a ````md fence as one markdown segment', () => {
+    // Outer fence is 4 backticks so the inner ``` lines are literal content
+    // (a closing fence must be at least the opening length).
+    const md = ['````md', '```mermaid', 'graph TD;', '```', '````'].join('\n');
+    expect(splitMarkdownSegments(md)).toEqual<Segment[]>([{ kind: 'markdown', text: md }]);
+  });
+
+  it('does not extract a callout marker inside a plain ``` fence', () => {
+    const md = ['```', '> [!info]', '> not a callout', '```'].join('\n');
+    expect(splitMarkdownSegments(md)).toEqual<Segment[]>([{ kind: 'markdown', text: md }]);
+  });
+
   it('restores escaped wikilink brackets and alias pipes', () => {
     expect(restoreWikilinks('see \\[\\[Architecture\\]\\] now')).toBe('see [[Architecture]] now');
     expect(restoreWikilinks('\\[\\[Doc\\|alias\\]\\]')).toBe('[[Doc|alias]]');
@@ -70,6 +82,14 @@ describe('splitMarkdownSegments', () => {
     expect(restoreWikilinks('[[Plain]]')).toBe('[[Plain]]');
     // A lone escaped bracket that is not a wikilink is left untouched.
     expect(restoreWikilinks('an array \\[0\\]')).toBe('an array \\[0\\]');
+  });
+
+  it('does not restore wikilinks inside fenced code or inline code spans', () => {
+    const fenced = ['```', 'literal \\[\\[Doc\\]\\] sample', '```'].join('\n');
+    expect(restoreWikilinks(fenced)).toBe(fenced);
+    expect(restoreWikilinks('use `\\[\\[Doc\\]\\]` to link \\[\\[Doc\\]\\]')).toBe(
+      'use `\\[\\[Doc\\]\\]` to link [[Doc]]',
+    );
   });
 
   it('keeps multiple blocks in document order', () => {
