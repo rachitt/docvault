@@ -2,6 +2,7 @@ import type {
   CreateDocInput,
   Doc,
   DocMeta,
+  DocVersion,
   Product,
   SearchOptions,
   Template,
@@ -52,6 +53,10 @@ export const CH = {
   readDoc: 'dv:readDoc',
   createDoc: 'dv:createDoc',
   updateDoc: 'dv:updateDoc',
+  listVersions: 'dv:listVersions',
+  readVersion: 'dv:readVersion',
+  saveVersion: 'dv:saveVersion',
+  restoreVersion: 'dv:restoreVersion',
   trashDoc: 'dv:trashDoc',
   deleteProduct: 'dv:deleteProduct',
   listTrash: 'dv:listTrash',
@@ -124,6 +129,10 @@ export interface DocVaultApi {
   readDoc(idOrPath: string): Promise<Doc>;
   createDoc(input: CreateDocInput): Promise<Doc>;
   updateDoc(relPath: string, patch: UpdateDocPatch): Promise<Doc>;
+  listVersions(idOrPath: string): Promise<DocVersion[]>;
+  readVersion(docId: string, versionId: string): Promise<Doc>;
+  saveVersion(idOrPath: string): Promise<DocVersion | null>;
+  restoreVersion(docId: string, versionId: string): Promise<Doc>;
   trashDoc(relPath: string): Promise<void>;
   /** Soft-delete a product and all its docs; recoverable from trash. */
   deleteProduct(slug: string): Promise<void>;

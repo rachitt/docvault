@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   Doc,
   DocMeta,
+  DocVersion,
   Product,
   TemplateMeta,
   ThemeMode,
@@ -13,6 +14,7 @@ import type {
   EmbeddingStatus,
   ExportFormat,
   ExportProgress,
+  type DocVaultApi,
   SearchMode,
   UnifiedHit,
 } from '../shared/ipc';
@@ -27,7 +29,7 @@ export type NavView =
   | 'tags'
   | 'search'
   | 'doc';
-export type RightTab = 'outline' | 'links' | 'related' | 'ai';
+export type RightTab = 'outline' | 'links' | 'related' | 'history' | 'ai';
 
 /** Resolve the effective light/dark theme, expanding 'system' via the OS. */
 function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
@@ -75,6 +77,10 @@ interface State {
   /** Replace the open doc in place (e.g. after reloading it from disk). */
   setCurrentDoc: (doc: Doc) => void;
   saveCurrent: (content: string) => Promise<void>;
+  listVersions: (idOrPath: string) => Promise<DocVersion[]>;
+  readVersion: (docId: string, versionId: string) => Promise<Doc>;
+  saveVersion: (idOrPath?: string) => Promise<DocVersion | null>;
+  restoreVersion: (docId: string, versionId: string) => Promise<void>;
   newDoc: (product: string, title: string) => Promise<void>;
   newProduct: (title: string) => Promise<void>;
   /** Load the vault's document templates into state. */
@@ -124,6 +130,18 @@ interface State {
 }
 
 const api = () => window.docvault;
+
+const VERSION_PRELOAD_ERROR =
+  'Document history needs the updated preload bridge. Restart the desktop app to load the new version APIs.';
+
+function versionMethod<K extends 'listVersions' | 'readVersion' | 'saveVersion' | 'restoreVersion'>(
+  name: K,
+): DocVaultApi[K] {
+  const dv = api();
+  const fn = dv[name];
+  if (typeof fn !== 'function') throw new Error(VERSION_PRELOAD_ERROR);
+  return fn.bind(dv) as DocVaultApi[K];
+}
 
 function slugify(title: string): string {
   return (
@@ -185,6 +203,21 @@ export const useStore = create<State>((set, get) => ({
     const saved = await api().updateDoc(cur.relPath, { content });
     set({ currentDoc: saved });
     set({ docs: await api().listDocs() });
+  },
+
+  listVersions: (idOrPath) => versionMethod('listVersions')(idOrPath),
+
+  readVersion: (docId, versionId) => versionMethod('readVersion')(docId, versionId),
+
+  saveVersion: async (idOrPath) => {
+    const target = idOrPath ?? get().currentDoc?.frontmatter.id;
+    if (!target) return null;
+    return versionMethod('saveVersion')(target);
+  },
+
+  restoreVersion: async (docId, versionId) => {
+    const restored = await versionMethod('restoreVersion')(docId, versionId);
+    set({ currentDoc: restored, docs: await api().listDocs(), view: 'doc' });
   },
 
   newDoc: async (product, title) => {

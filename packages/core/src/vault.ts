@@ -61,6 +61,10 @@ export class Vault {
     return path.join(this.root, '.docvault');
   }
 
+  get versionsDir(): string {
+    return path.join(this.metaDir, 'versions');
+  }
+
   get dbPath(): string {
     return path.join(this.metaDir, 'index.db');
   }
@@ -116,7 +120,7 @@ export class Vault {
 
   /** Create the directory skeleton if missing. Safe to call repeatedly. */
   async ensure(): Promise<void> {
-    for (const dir of [this.docsDir, this.assetsDir, this.templatesDir, this.metaDir]) {
+    for (const dir of [this.docsDir, this.assetsDir, this.templatesDir, this.versionsDir]) {
       await mkdir(dir, { recursive: true });
     }
     if (!existsSync(this.configPath)) {

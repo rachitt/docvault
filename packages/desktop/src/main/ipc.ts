@@ -82,6 +82,18 @@ export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise
   h(CH.updateDoc, (relPath: string, patch: Record<string, unknown>) =>
     call('update_doc', { path: relPath, ...patch }),
   );
+  h(CH.listVersions, (idOrPath: string) =>
+    call('list_doc_versions', { id_or_path: idOrPath }),
+  );
+  h(CH.readVersion, (docId: string, versionId: string) =>
+    call('read_doc_version', { doc_id: docId, version_id: versionId }),
+  );
+  h(CH.saveVersion, (idOrPath: string) =>
+    call('save_doc_version', { id_or_path: idOrPath }),
+  );
+  h(CH.restoreVersion, (docId: string, versionId: string) =>
+    call('restore_doc_version', { doc_id: docId, version_id: versionId }),
+  );
   h(CH.trashDoc, (relPath: string) => call('delete_doc', { path: relPath }));
   h(CH.deleteProduct, (slug: string) => call('delete_product', { slug }));
   h(CH.listTrash, () => call('list_trash'));

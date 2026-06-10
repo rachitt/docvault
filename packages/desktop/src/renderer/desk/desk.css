@@ -389,6 +389,41 @@
   color: var(--ink-soft);
 }
 
+.desk .dv-version-history {
+  color: var(--ink);
+}
+.desk .dv-version-title,
+.desk .dv-version-action,
+.desk .dv-version-preview {
+  color: var(--ink) !important;
+}
+.desk .dv-version-muted,
+.desk .dv-version-icon {
+  color: var(--ink-soft) !important;
+}
+.desk .dv-version-row:hover {
+  background: rgba(120, 95, 50, 0.08) !important;
+}
+.desk .dv-version-row--selected {
+  background: rgba(255, 248, 226, 0.58) !important;
+}
+.desk .dv-version-row--selected:hover {
+  background: rgba(255, 248, 226, 0.68) !important;
+}
+.desk .dv-version-expanded {
+  background: rgba(255, 248, 226, 0.46);
+}
+.desk .dv-version-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: rgba(255, 248, 226, 0.72);
+}
+.desk-surface--app > aside button[data-active='true'] {
+  color: var(--ink) !important;
+}
+.desk-surface--app > aside button[data-active='false'] {
+  color: var(--ink-soft) !important;
+}
+
 /* ---------------------------------------------------------------- statusbar */
 .desk-statusbar {
   flex: 0 0 auto;
