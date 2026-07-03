@@ -19,14 +19,18 @@ exports.default = async function afterPack(context) {
   await flipFuses(electronBinary, {
     version: FuseVersion.V1,
     resetAdHocDarwinSignature: electronPlatformName === 'darwin',
-    // Block running the app binary as a bare Node process / inspector / NODE_OPTIONS.
-    [FuseV1Options.RunAsNode]: false,
+    // RunAsNode MUST stay enabled: the app hosts its MCP/SQLite sidecar on its
+    // own bundled Node via ELECTRON_RUN_AS_NODE (see src/main/ipc.ts), which
+    // makes the app self-contained instead of depending on the user's system
+    // `node`. We still block the other Node escape hatches (inspector args,
+    // NODE_OPTIONS) so the relaxation is narrow.
+    [FuseV1Options.RunAsNode]: true,
     [FuseV1Options.EnableNodeCliInspectArguments]: false,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
     // Encrypt cookies at rest.
     [FuseV1Options.EnableCookieEncryption]: true,
-    // NOTE: asar is intentionally disabled (the app spawns a system-node MCP
-    // sidecar that reads plain files), so the asar-integrity fuses are N/A.
+    // NOTE: asar is intentionally disabled (the sidecar reads plain vault files
+    // and dlopens better-sqlite3), so the asar-integrity fuses are N/A.
   });
 
   console.log(`[fuses] hardened ${path.basename(electronBinary)}`);

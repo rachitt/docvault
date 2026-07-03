@@ -16,7 +16,7 @@ import {
   fileSlug,
   type ExportFormat,
 } from './export/index.js';
-import { enhancedEnv, resolveBin } from './shell-env.js';
+import { enhancedEnv } from './shell-env.js';
 import { CH, EV } from '../shared/ipc.js';
 
 const require = createRequire(import.meta.url);
@@ -27,25 +27,25 @@ function resolveMcpServer(): string {
 }
 
 /**
- * Wires the renderer to a DocVault MCP server running as a system-node sidecar.
- * Electron itself never loads the native SQLite module — it speaks to the same
- * MCP server that Claude Code / Codex use, so there is a single source of truth
- * and no native-ABI rebuild. Config (starred/recent/etc.) is plain JSON handled
- * here directly; external file edits are surfaced via a lightweight watcher.
+ * Wires the renderer to a DocVault MCP server run as a sidecar on Electron's
+ * own bundled Node (ELECTRON_RUN_AS_NODE). The Electron main process never loads
+ * the native SQLite module itself — it speaks to the same MCP server that Claude
+ * Code / Codex use, so there is a single source of truth. Config (starred/recent/
+ * etc.) is plain JSON handled here directly; external file edits are surfaced via
+ * a lightweight watcher.
  */
 export async function registerIpc(win: BrowserWindow, vaultDir: string): Promise<() => void> {
-  // The MCP server loads a native SQLite module compiled for the system Node
-  // ABI, so it must run under a real `node` — never under Electron's runtime
-  // (whose ABI differs). `process.execPath` is only a usable node when we are
-  // NOT inside Electron; under Electron it is the Electron binary (and its path
-  // contains "node_modules", which is why a substring check is unsafe). So
-  // reuse execPath only outside Electron, otherwise resolve node from PATH.
-  // Also drop ELECTRON_RUN_AS_NODE so a `node` that happens to be Electron does
-  // not inherit Electron's ABI.
-  const nodeBin = resolveBin('node', [process.versions.electron ? '' : process.execPath]);
-  const { ELECTRON_RUN_AS_NODE: _drop, ...childEnv } = enhancedEnv();
+  // The MCP server loads a native SQLite module (better-sqlite3) that must be
+  // dlopen-ed by a Node whose ABI matches how it was built. We host the sidecar
+  // on Electron's OWN bundled Node via ELECTRON_RUN_AS_NODE, and build the native
+  // module for Electron's ABI (electron-builder `npmRebuild`). This keeps the
+  // packaged app fully self-contained: it no longer shells out to the user's
+  // system `node`, whose ABI drifts on every `brew upgrade node` — a mismatch
+  // there previously crashed the sidecar on load and stopped the app opening.
+  // Requires the RunAsNode fuse to stay enabled (see build/fuses.cjs).
+  const childEnv = { ...enhancedEnv(), ELECTRON_RUN_AS_NODE: '1' };
   const transport = new StdioClientTransport({
-    command: nodeBin,
+    command: process.execPath,
     args: [resolveMcpServer(), '--vault', vaultDir],
     env: childEnv as Record<string, string>,
   });
