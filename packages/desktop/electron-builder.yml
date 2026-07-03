@@ -3,12 +3,12 @@ productName: DocVault
 directories:
   buildResources: build
   output: dist-app
-# No asar: the app spawns a system-node MCP sidecar that must read plain files
-# and dlopen better-sqlite3.
+# No asar: the MCP sidecar reads plain vault files and dlopens better-sqlite3.
 asar: false
-# Do NOT rebuild native modules for Electron — better-sqlite3 runs under the
-# system-node sidecar and must keep its node ABI.
-npmRebuild: false
+# Rebuild native modules against Electron's ABI. The sidecar runs on Electron's
+# own bundled Node (ELECTRON_RUN_AS_NODE, see src/main/ipc.ts), so better-sqlite3
+# must match Electron's ABI — NOT the user's (drifting) system-node ABI.
+npmRebuild: true
 nodeGypRebuild: false
 files:
   - out/**/*
